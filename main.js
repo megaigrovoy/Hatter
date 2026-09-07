@@ -1185,9 +1185,20 @@ function tickHeadOverlayFromLm(poseKey, lm, getScreenPoint) {
     if (earSpan < 8) return false;
 
     st.earSpan = earSpan;
-    st.angle = Math.atan2(st.ry - st.ly, st.rx - st.lx);
     st.cx = (st.lx + st.rx) * 0.5;
     st.cy = (st.ly + st.ry) * 0.5;
+
+    // Индекс 7 — анатомически левое ухо, и на кадре фронтальной камеры оно оказывается
+    // СПРАВА. Вектор 7→8 тогда смотрит влево, angle ≈ 180°, и шляпа рисуется вверх
+    // тормашками. Берём линию ушей всегда слева направо по экрану: угол остаётся
+    // в пределах ±90° и описывает только наклон головы.
+    let dx = st.rx - st.lx;
+    let dy = st.ry - st.ly;
+    if (dx < 0) {
+        dx = -dx;
+        dy = -dy;
+    }
+    st.angle = Math.atan2(dy, dx);
     return true;
 }
 
@@ -1198,13 +1209,10 @@ function tickHeadOverlayFromLm(poseKey, lm, getScreenPoint) {
  */
 function headCrownPoint(st) {
     const lift = st.earSpan * WORN_HAT_LIFT_FRAC;
-    // Нормаль к линии ушей, направленная вверх по экрану.
-    let nx = Math.sin(st.angle);
-    let ny = -Math.cos(st.angle);
-    if (ny > 0) {
-        nx = -nx;
-        ny = -ny;
-    }
+    // Нормаль к линии ушей. st.angle нормализован в ±90°, поэтому cos(angle) > 0
+    // и ny всегда отрицательный — точка уходит вверх по экрану, к макушке.
+    const nx = Math.sin(st.angle);
+    const ny = -Math.cos(st.angle);
     return { x: st.cx + nx * lift, y: st.cy + ny * lift };
 }
 
