@@ -528,7 +528,12 @@ const HAT_SPRITE_URLS = {
     hat3: new URL('./src/assets/img/hats/hat3.png', import.meta.url).href,
     hat4: new URL('./src/assets/img/hats/hat4.png', import.meta.url).href,
     hat5: new URL('./src/assets/img/hats/hat5.png', import.meta.url).href,
-    hat6: new URL('./src/assets/img/hats/hat6.png', import.meta.url).href
+    hat6: new URL('./src/assets/img/hats/hat6.png', import.meta.url).href,
+    hat7: new URL('./src/assets/img/hats/hat7.png', import.meta.url).href,
+    hat8: new URL('./src/assets/img/hats/hat8.png', import.meta.url).href,
+    hat9: new URL('./src/assets/img/hats/hat9.png', import.meta.url).href,
+    hat10: new URL('./src/assets/img/hats/hat10.png', import.meta.url).href,
+    hat11: new URL('./src/assets/img/hats/hat11.png', import.meta.url).href
 };
 
 /** @type {Record<string, HTMLImageElement>} */
@@ -637,6 +642,72 @@ const HAT_TYPES = {
         crownLight: '#c08a5a',
         band: '#5b3a1c'
     },
+    // Шлем викинга: рога уходят вверх и вбок, поэтому ширину считаем по их
+    // размаху — иначе купол на голове получается втрое мельче остальных шляп.
+    viking: {
+        id: 'viking',
+        score: 75,
+        wearable: true,
+        sprite: 'hat7',
+        seatYFrac: 0.6,
+        artWidthFrac: 0.693,
+        brimMul: 1.02,
+        crown: '#8a8a8f',
+        crownLight: '#c9c9d0',
+        band: '#b8a068'
+    },
+    // Шляпа Робин Гуда: перо торчит высоко вверх, посадка по нижней кромке полей.
+    forester: {
+        id: 'forester',
+        score: 70,
+        wearable: true,
+        sprite: 'hat8',
+        seatYFrac: 0.72,
+        artWidthFrac: 0.572,
+        brimMul: 0.98,
+        crown: '#3f6b3a',
+        crownLight: '#74a06a',
+        band: '#8b5a2f'
+    },
+    // Двууголка: низкая и очень широкая, надевается глубоко.
+    bicorne: {
+        id: 'bicorne',
+        score: 85,
+        wearable: true,
+        sprite: 'hat9',
+        seatYFrac: 0.72,
+        artWidthFrac: 0.813,
+        brimMul: 1.08,
+        crown: '#232a3a',
+        crownLight: '#4a5468',
+        band: '#c9a227'
+    },
+    // Ушанка: уши свисают заметно ниже головы, посадка по кромке самой шапки.
+    ushanka: {
+        id: 'ushanka',
+        score: 70,
+        wearable: true,
+        sprite: 'hat10',
+        seatYFrac: 0.62,
+        artWidthFrac: 0.654,
+        brimMul: 0.98,
+        crown: '#6b4a2c',
+        crownLight: '#a67c50',
+        band: '#8b3a2f'
+    },
+    // Императорская корона: подвески свисают ниже дуги, ширина — по самой дуге.
+    imperial: {
+        id: 'imperial',
+        score: 90,
+        wearable: true,
+        sprite: 'hat11',
+        seatYFrac: 0.62,
+        artWidthFrac: 0.76,
+        brimMul: 1.02,
+        crown: '#2f7a6a',
+        crownLight: '#7cc0ad',
+        band: '#c9a227'
+    },
     // Золотая и ловушка рисуются процедурно: они должны читаться как особые
     // и не теряться среди обычных шляп.
     golden: {
@@ -661,7 +732,10 @@ const HAT_TYPES = {
     }
 };
 
-const WEARABLE_ORDER = ['top', 'tyrol', 'bowler', 'wizard', 'cap', 'cowboy'];
+const WEARABLE_ORDER = [
+    'top', 'tyrol', 'bowler', 'wizard', 'cap', 'cowboy',
+    'viking', 'forester', 'bicorne', 'ushanka', 'imperial'
+];
 
 function pickHatTypeForLevel(spec) {
     const r = Math.random();
