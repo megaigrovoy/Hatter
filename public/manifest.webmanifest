@@ -1,0 +1,17 @@
+{
+  "name": "Hatter",
+  "short_name": "Hatter",
+  "start_url": "/",
+  "display": "fullscreen",
+  "orientation": "any",
+  "background_color": "#0d0a18",
+  "theme_color": "#0d0a18",
+  "icons": [
+    {
+      "src": "/hat-icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}
