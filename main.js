@@ -1355,9 +1355,21 @@ const WORN_HAT_LIFT_FRAC = 0.5;
 /** Порог видимости точек головы — ниже него голову не отслеживаем. */
 const HEAD_MIN_VISIBILITY = 0.28;
 
-function pruneHeadOverlayState(activePoseKeys) {
+/**
+ * Сколько держим геометрию головы после того, как модель перестала её видеть.
+ * MediaPipe с двумя людьми в кадре регулярно роняет одного на кадр-другой:
+ * без этой задержки надетая шляпа мигала бы на каждом таком пропуске.
+ */
+const HEAD_STATE_TTL_MS = 500;
+
+function pruneHeadOverlayState(activePoseKeys, nowMs) {
     for (const k of [...headOverlayByPoseKey.keys()]) {
-        if (!activePoseKeys.has(k)) headOverlayByPoseKey.delete(k);
+        if (activePoseKeys.has(k)) continue;
+        const st = headOverlayByPoseKey.get(k);
+        // Свежую запись оставляем: игрок, скорее всего, вернётся через кадр.
+        if (!st || nowMs - (st.lastSeenMs ?? 0) > HEAD_STATE_TTL_MS) {
+            headOverlayByPoseKey.delete(k);
+        }
     }
 }
 
@@ -1365,7 +1377,7 @@ function pruneHeadOverlayState(activePoseKeys) {
  * Обновляет сглаженную геометрию головы игрока.
  * @returns {boolean} true — голова видна и пригодна для ловли/отрисовки.
  */
-function tickHeadOverlayFromLm(poseKey, lm, getScreenPoint) {
+function tickHeadOverlayFromLm(poseKey, lm, getScreenPoint, nowMs = performance.now()) {
     const nose = lm[0];
     const earL = lm[7];
     const earR = lm[8];
@@ -1394,6 +1406,7 @@ function tickHeadOverlayFromLm(poseKey, lm, getScreenPoint) {
     if (earSpan < 8) return false;
 
     st.earSpan = earSpan;
+    st.lastSeenMs = nowMs;
     st.cx = (st.lx + st.rx) * 0.5;
     st.cy = (st.ly + st.ry) * 0.5;
 
@@ -2416,7 +2429,7 @@ function gameLoop(nowTime) {
         if (gotNewVideoPoseFrame) {
             prunePoseSmoothState(activePoseKeys, nowPoseMs);
             prunePoseDisplayState(activePoseKeys);
-            pruneHeadOverlayState(activePoseKeys);
+            pruneHeadOverlayState(activePoseKeys, nowPoseMs);
             commitPoseTargetsFromFrame(orderedPersons, nowPoseMs);
         }
 
@@ -2424,7 +2437,7 @@ function gameLoop(nowTime) {
 
         for (const { key: poseKey } of orderedPersons) {
             const landmarks = displayLmByPoseKey.get(poseKey);
-            if (landmarks) tickHeadOverlayFromLm(poseKey, landmarks, getScreenPoint);
+            if (landmarks) tickHeadOverlayFromLm(poseKey, landmarks, getScreenPoint, nowPoseMs);
         }
     }
 
@@ -2457,7 +2470,10 @@ function gameLoop(nowTime) {
     for (const hat of landed) hatReachedFloor(hat);
 
     // Шляпы на головах рисуем поверх летящих — надетая всегда на виду.
-    for (const { key: poseKey } of orderedPersons) {
+    // Идём по СОХРАНЁННЫМ головам, а не только по видимым в этом кадре: модель
+    // регулярно теряет одного из двух игроков на кадр-другой, и обход по
+    // orderedPersons заставлял бы шляпу мигать на каждом таком пропуске.
+    for (const poseKey of headOverlayByPoseKey.keys()) {
         drawCatchHint(canvasCtx, poseKey);
         drawWornHat(canvasCtx, poseKey);
     }
