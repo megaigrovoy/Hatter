@@ -11,8 +11,6 @@ const STORAGE_LEADERBOARD = 'hatter-leaderboard-top10';
 const FINAL_LEVEL = 5;
 const LEADERBOARD_MAX = 10;
 const CATCH_TUTORIAL_MS = 5000;
-/** Промахов (шляпа упала на пол) до конца игры. */
-const START_LIVES = 3;
 
 const DEBUG_FRAME_PERF =
     typeof location !== 'undefined' && new URLSearchParams(location.search).get('perf') === '1';
@@ -55,7 +53,6 @@ const I18N_STRINGS = {
         fullscreen: 'На весь экран',
         fullscreenExit: 'Свернуть',
         galleryLink: 'Все игры',
-        gameOver: 'ИГРА ОКОНЧЕНА',
         victory: 'Уровень пройден!',
         youWon: 'Ты победил!',
         leaderboardTitle: 'Топ-10 на этом устройстве',
@@ -64,10 +61,10 @@ const I18N_STRINGS = {
         leaderboardNewRecord: 'Новый рекорд!',
         leaderboardNoTop: 'Не попал в топ-10',
         leaderboardEmpty: 'Пока нет результатов',
-        tutCatch: 'Подставь голову — шляпа наденется',
-        tutMiss: 'Упавшая шляпа — минус жизнь',
+        tutCatch: 'Поймай шляпу центром макушки',
+        tutMiss: 'Заденешь краем — шляпа собьётся и упадёт',
         levelLabel: 'Уровень',
-        livesLabel: 'Жизни',
+        streakLabel: 'Серия',
         quotaLabel: 'Поймать',
         loadingModels: 'Загрузка моделей…',
         players1ok: 'Режим: 1 игрок',
@@ -96,7 +93,6 @@ const I18N_STRINGS = {
         fullscreen: 'Fullscreen',
         fullscreenExit: 'Exit fullscreen',
         galleryLink: 'All games',
-        gameOver: 'GAME OVER',
         victory: 'Level complete!',
         youWon: 'You won!',
         leaderboardTitle: 'Top 10 on this device',
@@ -105,10 +101,10 @@ const I18N_STRINGS = {
         leaderboardNewRecord: 'New record!',
         leaderboardNoTop: 'Not in top 10',
         leaderboardEmpty: 'No scores yet',
-        tutCatch: 'Move your head under the hat to wear it',
-        tutMiss: 'A hat that hits the floor costs a life',
+        tutCatch: 'Catch the hat with the centre of your head',
+        tutMiss: 'Clip it with the edge and it is knocked away',
         levelLabel: 'Level',
-        livesLabel: 'Lives',
+        streakLabel: 'Streak',
         quotaLabel: 'Catch',
         loadingModels: 'Loading models…',
         players1ok: 'Mode: 1 player',
@@ -145,10 +141,10 @@ function updateLevelDisplay() {
     if (levelDisplay) levelDisplay.textContent = formatLevel();
 }
 
-function updateLivesDisplay() {
-    if (!livesDisplay) return;
-    const hearts = '♥'.repeat(Math.max(0, lives)) + '·'.repeat(Math.max(0, START_LIVES - lives));
-    livesDisplay.textContent = `${t('livesLabel')}: ${hearts}`;
+/** Серия подряд пойманных шляп: она даёт бонус к очкам, её и показываем. */
+function updateStreakDisplay() {
+    if (!streakDisplay) return;
+    streakDisplay.textContent = comboStreak >= 2 ? `${t('streakLabel')}: x${comboStreak}` : '';
 }
 
 function updateQuotaDisplay() {
@@ -182,7 +178,7 @@ function applyI18n() {
     if (scoreDisplay && isPlaying) scoreDisplay.innerText = formatScore(score);
     if (isPlaying) {
         updateLevelDisplay();
-        updateLivesDisplay();
+        updateStreakDisplay();
         updateQuotaDisplay();
     }
     document.getElementById('players-count-group')?.setAttribute('aria-label', t('playerLabel'));
@@ -310,6 +306,12 @@ function playMissSound() {
     playToneSequence([196, 155], { type: 'sawtooth', step: 0.09, dur: 0.22, gain: 0.12 });
 }
 
+/** Глухой щелчок: шляпу задели краем головы и сбили в сторону. */
+function playKnockSound() {
+    playNoiseBurst({ dur: 0.14, gain: 0.13, lowpass: 1600 });
+    playToneSequence([330, 247], { type: 'triangle', step: 0.05, dur: 0.12, gain: 0.09 });
+}
+
 function playBonusSound() {
     playToneSequence([659.25, 880, 1046.5, 1318.5], { type: 'square', step: 0.06, dur: 0.13, gain: 0.13 });
 }
@@ -321,10 +323,6 @@ function playBombSound() {
 
 function playLevelUpSound() {
     playToneSequence([523.25, 659.25, 783.99, 1046.5], { type: 'triangle', step: 0.11, dur: 0.28, gain: 0.2 });
-}
-
-function playGameOverSound() {
-    playToneSequence([392, 330, 262, 196], { type: 'sawtooth', step: 0.17, dur: 0.4, gain: 0.17 });
 }
 
 /* --- Фоновая музыка: лёгкий генеративный арпеджиатор на Web Audio --- */
@@ -426,7 +424,6 @@ const video = document.getElementById('webcam');
 const canvasElement = document.getElementById('game-canvas');
 const canvasCtx = canvasElement.getContext('2d');
 const scoreDisplay = document.getElementById('score-display');
-const gameOverOverlay = document.getElementById('game-over-overlay');
 const victoryOverlay = document.getElementById('victory-overlay');
 const catchTutorialOverlay = document.getElementById('catch-tutorial-overlay');
 const catchTutorialCountdown = document.getElementById('catch-tutorial-countdown');
@@ -436,7 +433,7 @@ const campaignRankLine = document.getElementById('campaign-rank-line');
 const leaderboardList = document.getElementById('leaderboard-list');
 const btnCampaignMenu = document.getElementById('btn-campaign-menu');
 const levelDisplay = document.getElementById('level-display');
-const livesDisplay = document.getElementById('lives-display');
+const streakDisplay = document.getElementById('streak-display');
 const quotaDisplay = document.getElementById('quota-display');
 const loadingElement = document.getElementById('loading');
 const mainMenu = document.getElementById('main-menu');
@@ -461,7 +458,6 @@ let prevVideoTimeForInterval = -1;
 
 let score = 0;
 let currentLevel = 1;
-let lives = START_LIVES;
 let caughtThisLevel = 0;
 let levelQuota = 6;
 let comboStreak = 0;
@@ -490,12 +486,21 @@ let spawnedThisLevel = 0;
  * Спека уровня: сколько шляп надо поймать, как часто они появляются,
  * как быстро планируют и какая доля «плохих» (бомб-цилиндров).
  */
+/** Сколько шляп нужно поймать, чтобы пройти уровень. */
+const LEVEL_QUOTA = 40;
+
+/**
+ * Спека уровня. Квота одна на всех уровнях, растёт только сложность:
+ * шляпы чаще появляются, быстрее планируют и среди них больше ловушек.
+ * Интервалы появления сокращены под длинный уровень, иначе 40 шляп
+ * растянулись бы на несколько минут ожидания.
+ */
 const LEVEL_SPECS = [
-    { quota: 6, spawnMs: 2100, fallMul: 0.85, swayMul: 0.8, bombChance: 0.0, goldenChance: 0.06, maxAir: 2 },
-    { quota: 9, spawnMs: 1850, fallMul: 1.0, swayMul: 1.0, bombChance: 0.1, goldenChance: 0.08, maxAir: 3 },
-    { quota: 12, spawnMs: 1600, fallMul: 1.15, swayMul: 1.15, bombChance: 0.16, goldenChance: 0.1, maxAir: 3 },
-    { quota: 15, spawnMs: 1400, fallMul: 1.32, swayMul: 1.3, bombChance: 0.2, goldenChance: 0.11, maxAir: 4 },
-    { quota: 18, spawnMs: 1200, fallMul: 1.5, swayMul: 1.45, bombChance: 0.24, goldenChance: 0.12, maxAir: 4 }
+    { quota: LEVEL_QUOTA, spawnMs: 1500, fallMul: 0.85, swayMul: 0.8, bombChance: 0.0, goldenChance: 0.06, maxAir: 2 },
+    { quota: LEVEL_QUOTA, spawnMs: 1350, fallMul: 1.0, swayMul: 1.0, bombChance: 0.1, goldenChance: 0.08, maxAir: 3 },
+    { quota: LEVEL_QUOTA, spawnMs: 1200, fallMul: 1.15, swayMul: 1.15, bombChance: 0.16, goldenChance: 0.1, maxAir: 3 },
+    { quota: LEVEL_QUOTA, spawnMs: 1080, fallMul: 1.32, swayMul: 1.3, bombChance: 0.2, goldenChance: 0.11, maxAir: 4 },
+    { quota: LEVEL_QUOTA, spawnMs: 950, fallMul: 1.5, swayMul: 1.45, bombChance: 0.24, goldenChance: 0.12, maxAir: 4 }
 ];
 
 function getLevelSpec(level = currentLevel) {
@@ -507,43 +512,133 @@ function getLevelSpec(level = currentLevel) {
  * Виды шляп. `score` — очки за поимку, `wearable` — надевается ли на голову.
  * Бомба-цилиндр не надевается: попадание по голове снимает жизнь.
  */
+/* ---------------------------------------------------------------------------
+ * Спрайты шляп. PNG 512x512 с прозрачным фоном, лежат в src/assets/img/hats.
+ *
+ * seatYFrac — доля высоты картинки, на которой шляпа садится на голову
+ * (нижняя кромка тульи). Именно эта линия совмещается с макушкой, поэтому
+ * значения выверены под каждый рисунок отдельно.
+ * artWidthFrac — какую долю ширины картинки занимает сама шляпа: по нему
+ * пересчитываем масштаб, чтобы шляпы разной вёрстки смотрелись одинаково.
+ * ------------------------------------------------------------------------- */
+
+const HAT_SPRITE_URLS = {
+    hat1: new URL('./src/assets/img/hats/hat1.png', import.meta.url).href,
+    hat2: new URL('./src/assets/img/hats/hat2.png', import.meta.url).href,
+    hat3: new URL('./src/assets/img/hats/hat3.png', import.meta.url).href,
+    hat4: new URL('./src/assets/img/hats/hat4.png', import.meta.url).href,
+    hat5: new URL('./src/assets/img/hats/hat5.png', import.meta.url).href,
+    hat6: new URL('./src/assets/img/hats/hat6.png', import.meta.url).href
+};
+
+/** @type {Record<string, HTMLImageElement>} */
+const hatSprites = {};
+
+function loadHatSprites() {
+    const jobs = [];
+    for (const [key, url] of Object.entries(HAT_SPRITE_URLS)) {
+        const img = new Image();
+        hatSprites[key] = img;
+        jobs.push(
+            new Promise((resolve) => {
+                img.onload = () => resolve();
+                img.onerror = () => {
+                    console.warn(`[Hatter] не удалось загрузить спрайт ${key}: ${url}`);
+                    resolve();
+                };
+                img.src = url;
+            })
+        );
+    }
+    return Promise.all(jobs);
+}
+
+function spriteReady(key) {
+    const img = hatSprites[key];
+    return !!img && img.complete && img.naturalWidth > 0;
+}
+
 const HAT_TYPES = {
+    // Цилиндр: тулья высокая, посадка сразу над полями.
     top: {
         id: 'top',
         score: 50,
         wearable: true,
-        crown: '#7b4dff',
-        crownLight: '#c9a6ff',
-        band: '#ffcf4d',
-        brimMul: 1.0
+        sprite: 'hat1',
+        seatYFrac: 0.586,
+        artWidthFrac: 0.627,
+        brimMul: 1.0,
+        crown: '#6f9dd0',
+        crownLight: '#a8c8e8',
+        band: '#f0a028'
     },
-    cowboy: {
-        id: 'cowboy',
+    // Тирольская с перьями: широкие поля, перья торчат вверх и вбок.
+    tyrol: {
+        id: 'tyrol',
         score: 60,
         wearable: true,
-        crown: '#c07b3a',
-        crownLight: '#e8b271',
-        band: '#5b3a1c',
-        brimMul: 1.28
+        sprite: 'hat2',
+        seatYFrac: 0.533,
+        artWidthFrac: 0.689,
+        brimMul: 1.02,
+        crown: '#4a6b3a',
+        crownLight: '#7d9b64',
+        band: '#8b4a2f'
     },
-    party: {
-        id: 'party',
-        score: 45,
-        wearable: true,
-        crown: '#ff6fae',
-        crownLight: '#ffb3d4',
-        band: '#4fe3a1',
-        brimMul: 0.72
-    },
-    beret: {
-        id: 'beret',
+    // Котелок: округлая тулья, узкие подвёрнутые поля.
+    bowler: {
+        id: 'bowler',
         score: 55,
         wearable: true,
-        crown: '#4fa8ff',
-        crownLight: '#a6d4ff',
-        band: '#1b2a52',
-        brimMul: 0.9
+        sprite: 'hat3',
+        seatYFrac: 0.576,
+        artWidthFrac: 0.707,
+        brimMul: 0.98,
+        crown: '#2b2b2f',
+        crownLight: '#5a5a62',
+        band: '#151518'
     },
+    // Колпак волшебника: очень высокий конус, поля у самого низа.
+    wizard: {
+        id: 'wizard',
+        score: 70,
+        wearable: true,
+        sprite: 'hat4',
+        seatYFrac: 0.643,
+        artWidthFrac: 0.771,
+        brimMul: 1.0,
+        crown: '#3b4585',
+        crownLight: '#6b76c4',
+        band: '#e8b45c'
+    },
+    // Бейсболка: козырёк спереди, посадка низкая по всей ширине.
+    cap: {
+        id: 'cap',
+        score: 45,
+        wearable: true,
+        sprite: 'hat5',
+        seatYFrac: 0.572,
+        artWidthFrac: 0.551,
+        brimMul: 0.9,
+        crown: '#3f6191',
+        crownLight: '#7ba0cc',
+        band: '#e8a33c'
+    },
+    // Ковбойская: самые широкие поля, загнутые по краям.
+    cowboy: {
+        id: 'cowboy',
+        score: 65,
+        wearable: true,
+        sprite: 'hat6',
+        seatYFrac: 0.56,
+        artWidthFrac: 0.803,
+        brimMul: 1.06,
+        crown: '#8b5a34',
+        crownLight: '#c08a5a',
+        band: '#5b3a1c'
+    },
+    // Золотая и ловушка рисуются процедурно: они должны читаться как особые
+    // и не теряться среди обычных шляп.
     golden: {
         id: 'golden',
         score: 150,
@@ -566,7 +661,7 @@ const HAT_TYPES = {
     }
 };
 
-const WEARABLE_ORDER = ['top', 'cowboy', 'party', 'beret'];
+const WEARABLE_ORDER = ['top', 'tyrol', 'bowler', 'wizard', 'cap', 'cowboy'];
 
 function pickHatTypeForLevel(spec) {
     const r = Math.random();
@@ -582,7 +677,44 @@ function pickHatTypeForLevel(spec) {
  * ширина полей = brimW. Вызывающий сам делает translate/rotate/scale.
  * ------------------------------------------------------------------------- */
 
+/**
+ * Рисует PNG-шляпу в локальных координатах: начало координат = линия посадки,
+ * brimW = желаемая ширина шляпы на экране.
+ *
+ * В картинке шляпа занимает не всю ширину (artWidthFrac) и садится на голову
+ * на высоте seatYFrac от верха. Поэтому масштаб считаем от artWidthFrac,
+ * а картинку сдвигаем так, чтобы её линия посадки попала в начало координат.
+ */
+function drawHatSprite(ctx, type, brimW, opts = {}) {
+    const img = hatSprites[type.sprite];
+    const alpha = opts.alpha ?? 1;
+    const iw = img.naturalWidth;
+    const ih = img.naturalHeight;
+
+    // Ширина самой шляпы внутри картинки должна стать равна brimW.
+    const scale = brimW / (iw * type.artWidthFrac);
+    const dw = iw * scale;
+    const dh = ih * scale;
+
+    ctx.save();
+    ctx.globalAlpha *= alpha;
+    if (type.golden) {
+        ctx.shadowColor = 'rgba(255, 207, 77, 0.85)';
+        ctx.shadowBlur = brimW * 0.24;
+    }
+    // Сдвиг: по X центрируем, по Y поднимаем на долю seatYFrac.
+    ctx.drawImage(img, -dw * 0.5, -dh * type.seatYFrac, dw, dh);
+    ctx.restore();
+}
+
 function drawHatShape(ctx, type, brimW, opts = {}) {
+    // Спрайтовая шляпа: рисуем PNG так, чтобы линия посадки картинки легла
+    // ровно в текущее начало координат — туда же, куда садится процедурная.
+    if (type.sprite && spriteReady(type.sprite)) {
+        drawHatSprite(ctx, type, brimW, opts);
+        return;
+    }
+
     const alpha = opts.alpha ?? 1;
     const wobble = opts.wobble ?? 0;
     const bw = brimW;
@@ -702,12 +834,40 @@ function drawHatShape(ctx, type, brimW, opts = {}) {
  * Планирующая сверху шляпа. Падает медленно, покачиваясь как лист,
  * чтобы игрок успел подставить голову.
  */
+/**
+ * Ширина, с которой шляпа рисуется на экране: та же и в полёте, и на голове.
+ * Берём средний размер голов в кадре; если игроков не видно, откатываемся на
+ * долю экрана, чтобы шляпы всё равно были нормального размера.
+ */
+function hatWidthForEarSpan(earSpan, type) {
+    const raw = earSpan * WORN_HAT_BRIM_MUL * (type?.brimMul ?? 1);
+    // Зажим: у самой камеры шляпа не должна занимать пол-экрана, а издалека
+    // превращаться в неразличимую точку.
+    return Math.max(gameLayout.minSide * 0.11, Math.min(gameLayout.minSide * 0.42, raw));
+}
+
+function currentHatDisplayWidth(type) {
+    let sum = 0;
+    let n = 0;
+    for (const st of headOverlayByPoseKey.values()) {
+        if (st?.earSpan > 8) {
+            sum += st.earSpan;
+            n++;
+        }
+    }
+    // Игроков не видно — берём долю экрана, чтобы шляпы были нормального размера.
+    const earSpan = n > 0 ? sum / n : gameLayout.minSide * 0.1;
+    return hatWidthForEarSpan(earSpan, type);
+}
+
 class FallingHat {
     constructor(type, spec) {
         const w = gameLayout.w;
         const h = gameLayout.h;
         this.type = type;
-        this.brimW = Math.max(64, gameLayout.minSide * 0.19);
+        // Размер летящей шляпы = размеру, который она примет на голове. Иначе при
+        // поимке шляпа скачком меняла бы масштаб: близко к камере — втрое.
+        this.brimW = currentHatDisplayWidth(type);
         // Стартуем в пределах центральных 76% ширины — по краям голову не подставить.
         this.baseX = w * (0.12 + Math.random() * 0.76);
         this.x = this.baseX;
@@ -722,10 +882,47 @@ class FallingHat {
         this.rot = 0;
         this.caught = false;
         this.dead = false;
+        /** Шляпу задело краем головы: планирование сменилось падением с кувырком. */
+        this.knocked = false;
+        this.knockVx = 0;
+        this.knockVy = 0;
+        this.spin = 0;
+        /** Ключи игроков, чьи головы уже отбивали эту шляпу — второй раз не отбиваем. */
+        this.knockedBy = new Set();
+    }
+
+    /**
+     * Скользящий удар краем головы. Шляпа теряет опору, кувыркается и падает
+     * дальше вбок — поймать её после этого уже нельзя.
+     * @param {number} dirX -1 или 1, в какую сторону отбросить
+     */
+    knockAside(dirX, poseKey) {
+        if (this.knocked) return;
+        this.knocked = true;
+        if (poseKey) this.knockedBy.add(poseKey);
+        const w = gameLayout.w;
+        this.knockVx = dirX * w * 0.00035 * (0.8 + Math.random() * 0.5);
+        // Небольшой подскок вверх перед падением — удар читается как толчок.
+        this.knockVy = -this.vy * 0.55;
+        this.spin = dirX * (0.006 + Math.random() * 0.004);
     }
 
     update(dtMs) {
         this.ageMs += dtMs;
+
+        if (this.knocked) {
+            // После удара планирование выключено: свободное падение с кувырком.
+            this.knockVy += gameLayout.h * 0.0000022 * dtMs;
+            this.x += this.knockVx * dtMs;
+            this.y += this.knockVy * dtMs;
+            this.rot += this.spin * dtMs;
+            this.knockVx *= 0.995;
+            if (this.y > gameLayout.h + this.brimW) this.dead = true;
+            // Улетела за боковой край — тоже считается упавшей.
+            if (this.x < -this.brimW || this.x > gameLayout.w + this.brimW) this.dead = true;
+            return;
+        }
+
         this.baseX += this.driftVx * dtMs;
         const sway = Math.sin(this.ageMs * this.swayFreq + this.swayPhase);
         this.x = this.baseX + sway * this.swayAmp;
@@ -750,15 +947,20 @@ class FallingHat {
         ctx.restore();
     }
 
-    /** Круг ловли — вокруг «линии посадки» шляпы. */
     /**
-     * Круг ловли вокруг линии посадки шляпы.
-     * У ловушки он заметно уже: щедрая зона нужна, чтобы легче ловить хорошие шляпы,
-     * но с ней же игрок притягивал бы бомбу, пройдя мимо на полкорпуса.
+     * Точка посадки шляпы — центр её тульи. Именно она должна совпасть с макушкой,
+     * чтобы шляпа наделась.
      */
-    catchDisc() {
-        const mul = this.type.bomb ? 0.2 : 0.42;
-        return { x: this.x, y: this.y, r: this.brimW * mul };
+    catchPoint() {
+        return { x: this.x, y: this.y };
+    }
+
+    /**
+     * Габарит шляпы для скользящего удара: по полям она заметно шире тульи,
+     * поэтому краем цепляется раньше, чем села бы на голову.
+     */
+    contactRadius() {
+        return this.brimW * 0.26;
     }
 }
 
@@ -1139,10 +1341,17 @@ const headOverlayByPoseKey = new Map();
 
 /** Сглаживание положения ушей/носа (меньше — плавнее, но с задержкой). */
 const HEAD_SMOOTH_ALPHA = isAndroidBrowser() ? 0.38 : 0.2;
-/** Ширина полей шляпы относительно расстояния между ушами. */
-const WORN_HAT_BRIM_MUL = 2.55;
-/** Насколько выше линии ушей сидит шляпа (в долях расстояния между ушами). */
-const WORN_HAT_LIFT_FRAC = 0.62;
+/**
+ * Ширина шляпы относительно расстояния между ушами. Уши уже самой головы,
+ * поэтому множитель заметно больше единицы: настоящая шляпа шире головы
+ * примерно в полтора раза, а голова шире межушного расстояния примерно на треть.
+ */
+const WORN_HAT_BRIM_MUL = 2.0;
+/**
+ * Насколько выше линии ушей садится шляпа, в долях межушного расстояния.
+ * Это макушка: точка, с которой совмещается линия посадки спрайта.
+ */
+const WORN_HAT_LIFT_FRAC = 0.5;
 /** Порог видимости точек головы — ниже него голову не отслеживаем. */
 const HEAD_MIN_VISIBILITY = 0.28;
 
@@ -1217,13 +1426,25 @@ function headCrownPoint(st) {
 }
 
 /**
- * Зона ловли — круг вокруг макушки; чуть шире головы, чтобы ловить было приятно.
- * Для ловушки радиус ужимаем до размера самой головы: попасть под бомбу должно
- * требовать реальной ошибки, а не близкого прохода.
+ * Радиус «яблочка» на макушке: центр шляпы должен попасть внутрь него, иначе
+ * шляпа не садится, а сбивается краем. Доля от расстояния между ушами.
+ * Значение подобрано так, чтобы прицельная игра была возможна и на дальней дистанции,
+ * где голова в кадре мелкая, но случайный проход мимо всё равно сбивал шляпу.
  */
-function headCatchDisc(st, strict = false) {
+const HEAD_CENTER_HIT_FRAC = 0.68;
+/** Радиус зоны касания: за её пределами шляпа пролетает мимо, не задев голову. */
+const HEAD_CONTACT_FRAC = 1.0;
+
+/** Круг точной посадки: попал сюда центром шляпы — надел. */
+function headSeatDisc(st) {
     const crown = headCrownPoint(st);
-    return { x: crown.x, y: crown.y, r: st.earSpan * (strict ? 0.5 : 0.78) };
+    return { x: crown.x, y: crown.y, r: st.earSpan * HEAD_CENTER_HIT_FRAC };
+}
+
+/** Круг касания: задел край — шляпа отлетает и падает дальше. */
+function headContactDisc(st) {
+    const crown = headCrownPoint(st);
+    return { x: crown.x, y: crown.y, r: st.earSpan * HEAD_CONTACT_FRAC };
 }
 
 function drawWornHat(ctx, poseKey) {
@@ -1233,7 +1454,9 @@ function drawWornHat(ctx, poseKey) {
     if (!worn) return;
 
     const crown = headCrownPoint(st);
-    const brimW = st.earSpan * WORN_HAT_BRIM_MUL * worn.type.brimMul;
+    // Тот же расчёт, что и для летящей шляпы, — иначе в момент поимки
+    // масштаб менялся бы скачком.
+    const brimW = hatWidthForEarSpan(st.earSpan, worn.type);
 
     // Короткая «пружинка» в первые 260 мс после надевания.
     const since = performance.now() - worn.sinceMs;
@@ -1258,15 +1481,28 @@ function drawCatchHint(ctx, poseKey) {
     const st = headOverlayByPoseKey.get(poseKey);
     if (!st || !st.earSpan) return;
     if (wornHatByPoseKey.has(poseKey)) return;
-    const disc = headCatchDisc(st);
+    // Показываем именно зону точной посадки: попасть надо центром шляпы сюда.
+    const seat = headSeatDisc(st);
     const pulse = 0.5 + 0.5 * Math.sin(performance.now() * 0.005);
     ctx.save();
-    ctx.globalAlpha = 0.25 + pulse * 0.2;
     ctx.strokeStyle = '#a37bff';
-    ctx.lineWidth = Math.max(2, st.earSpan * 0.06);
-    ctx.setLineDash([st.earSpan * 0.22, st.earSpan * 0.16]);
+    ctx.lineWidth = Math.max(2, st.earSpan * 0.055);
+    ctx.setLineDash([st.earSpan * 0.18, st.earSpan * 0.13]);
+    ctx.globalAlpha = 0.32 + pulse * 0.28;
     ctx.beginPath();
-    ctx.arc(disc.x, disc.y, disc.r, 0, Math.PI * 2);
+    ctx.arc(seat.x, seat.y, seat.r, 0, Math.PI * 2);
+    ctx.stroke();
+
+    // Перекрестье в центре — куда именно вести макушку.
+    ctx.setLineDash([]);
+    ctx.globalAlpha = 0.3 + pulse * 0.25;
+    ctx.lineWidth = Math.max(1.5, st.earSpan * 0.035);
+    const tick = seat.r * 0.42;
+    ctx.beginPath();
+    ctx.moveTo(seat.x - tick, seat.y);
+    ctx.lineTo(seat.x + tick, seat.y);
+    ctx.moveTo(seat.x, seat.y - tick);
+    ctx.lineTo(seat.x, seat.y + tick);
     ctx.stroke();
     ctx.restore();
 }
@@ -1282,13 +1518,16 @@ function circleHit(ax, ay, ar, bx, by, br) {
  * Ловля, промахи, прогресс уровня
  * ------------------------------------------------------------------------- */
 
-function loseLife(reason) {
+/**
+ * Промах. Жизней в игре нет: пропущенная шляпа не наказывает, а лишь обрывает
+ * серию. Уровень заканчивается только набранной квотой, поэтому игрок всегда
+ * доигрывает до конца, а не вылетает из-за неудачной полосы.
+ */
+function registerMiss(reason) {
     if (!isPlaying || victoryTransitionActive) return;
-    lives -= 1;
     comboStreak = 0;
-    updateLivesDisplay();
-    if (lives <= 0) triggerGameOver();
-    else if (reason === 'bomb') playBombSound();
+    updateStreakDisplay();
+    if (reason === 'bomb') playBombSound();
     else playMissSound();
 }
 
@@ -1298,11 +1537,12 @@ function catchHat(hat, poseKey, disc) {
     hat.dead = true;
 
     if (hat.type.bomb) {
-        // Шляпа-бомба сбивает надетую и стоит жизни.
+        // Ловушка сбивает надетую шляпу и обрывает серию — этого достаточно,
+        // чтобы её хотелось избегать, без отнятия жизней.
         wornHatByPoseKey.delete(poseKey);
         spawnMissBurst(disc.x, disc.y, '#ff4f4f');
         floaters.push(new ScoreFloater(disc.x, disc.y, '✖', '#ff6b6b'));
-        loseLife('bomb');
+        registerMiss('bomb');
         return;
     }
 
@@ -1316,6 +1556,7 @@ function catchHat(hat, poseKey, disc) {
     caughtThisLevel += 1;
     scoreDisplay.innerText = formatScore(score);
     updateQuotaDisplay();
+    updateStreakDisplay();
 
     spawnCatchBurst(disc.x, disc.y, hat.type);
     floaters.push(
@@ -1328,15 +1569,15 @@ function catchHat(hat, poseKey, disc) {
     if (caughtThisLevel >= levelQuota) advanceLevel();
 }
 
-/** Шляпа долетела до низа экрана. Пропущенная обычная шляпа стоит жизни. */
+/** Шляпа долетела до низа экрана. Наказания нет — только сброс серии. */
 function hatReachedFloor(hat) {
     if (hat.type.bomb) {
-        // Бомбе и положено упасть — это не промах.
+        // Ловушке и положено падать мимо — это не промах.
         spawnMissBurst(hat.x, gameLayout.h - hat.brimW * 0.3, '#2b2b34');
         return;
     }
     spawnMissBurst(hat.x, gameLayout.h - hat.brimW * 0.3, hat.type.crown);
-    loseLife('miss');
+    registerMiss('miss');
 }
 
 function advanceLevel() {
@@ -1400,14 +1641,48 @@ function updateHatCatching(orderedPersons) {
     for (let i = snapshot.length - 1; i >= 0; i--) {
         const hat = snapshot[i];
         if (!hat || hat.dead) continue;
-        const hd = hat.catchDisc();
+        // Сбитая шляпа уже падает мимо: ни надеть, ни ударить второй раз.
+        if (hat.knocked) continue;
+
+        const cp = hat.catchPoint();
+
         for (const { key: poseKey } of orderedPersons) {
             const st = headOverlayByPoseKey.get(poseKey);
             if (!st || !st.earSpan) continue;
-            const disc = headCatchDisc(st, hat.type.bomb === true);
-            if (!circleHit(hd.x, hd.y, hd.r, disc.x, disc.y, disc.r)) continue;
-            catchHat(hat, poseKey, disc);
-            break;
+
+            const seat = headSeatDisc(st);
+            const dx = cp.x - seat.x;
+            const dy = cp.y - seat.y;
+
+            // Оси разделены намеренно. По вертикали важен сам момент касания:
+            // шляпа должна дойти до макушки. По горизонтали — точность прицела.
+            // Единый круг отбивал бы шляпу ещё в воздухе, за полголовы до головы.
+            const vertical = Math.abs(dy);
+            const horizontal = Math.abs(dx);
+
+            // Ещё не долетела до уровня макушки — пропускаем до следующего кадра.
+            if (vertical > seat.r) continue;
+
+            // Точное попадание: центр шляпы над макушкой.
+            if (horizontal <= seat.r) {
+                catchHat(hat, poseKey, seat);
+                break;
+            }
+
+            // Ловушка не сбивается краем — она просто пролетает мимо.
+            if (hat.type.bomb) continue;
+
+            // Скользящий удар: шляпа дошла до головы, но мимо центра.
+            const contact = headContactDisc(st);
+            if (horizontal <= contact.r + hat.contactRadius()) {
+                const dirX = dx >= 0 ? 1 : -1;
+                hat.knockAside(dirX, poseKey);
+                spawnMissBurst(cp.x, cp.y, hat.type.crownLight);
+                playKnockSound();
+                comboStreak = 0;
+                updateStreakDisplay();
+                break;
+            }
         }
     }
 }
@@ -1501,18 +1776,6 @@ function clearVictoryTransition() {
     victoryTransitionActive = false;
     victoryOverlay?.classList.add('is-hidden');
     campaignCompleteOverlay?.classList.add('is-hidden');
-}
-
-function triggerGameOver() {
-    if (!isPlaying) return;
-    clearVictoryTransition();
-    stopMusic();
-    playGameOverSound();
-    isPlaying = false;
-    updateQuotaDisplay();
-    gameOverOverlay?.classList.remove('is-hidden');
-    // Итог кампании тоже идёт в таблицу рекордов — иначе прогресс до game over пропадает.
-    showCampaignResult();
 }
 
 function showCampaignResult() {
@@ -1609,7 +1872,8 @@ function resetRuntimeState() {
     poseSmoothByKey.clear();
     stablePoseShoulderMid = [];
     lastVideoTime = -1;
-    poseDetectTsMs = 0;
+    // poseDetectTsMs НЕ обнуляем: экземпляр PoseLandmarker переживает рестарт игры
+    // и помнит последнюю метку. Сброс в ноль ломал монотонность и глушил трекер.
     cachedSmoothedLmByPoseKey.clear();
     posePrevTargetLmByPoseKey.clear();
     poseTargetLmByPoseKey.clear();
@@ -1626,26 +1890,26 @@ function showMainMenu() {
     clearCatchTutorial();
     clearVictoryTransition();
     stopMusic();
-    gameOverOverlay?.classList.add('is-hidden');
     mainMenu.classList.remove('is-hidden');
     hudGame.classList.add('is-hidden');
     resetRuntimeState();
     updateQuotaDisplay();
     canvasCtx.clearRect(0, 0, canvasElement.width, canvasElement.height);
     canvasElement.style.visibility = 'hidden';
-    void video.pause();
+    // Видео НЕ ставим на паузу. На паузе currentTime замирает, и при новом старте
+    // метки времени для MediaPipe перестают строго возрастать — детектор молча
+    // отбрасывает кадры, и трекер головы пропадает до перезагрузки страницы.
+    // Поток камеры дешевле держать живым: кадры всё равно не рисуются в меню.
 }
 
 function startGame(startLevel = 1) {
     tryUnlockAudioOnUserGesture();
     clearVictoryTransition();
-    gameOverOverlay?.classList.add('is-hidden');
     score = 0;
-    lives = START_LIVES;
     scoreDisplay.innerText = formatScore(score);
     resetRuntimeState();
     beginLevel(startLevel);
-    updateLivesDisplay();
+    updateStreakDisplay();
     lastFrameTime = performance.now();
     mainMenu.classList.add('is-hidden');
     hudGame.classList.remove('is-hidden');
@@ -1866,6 +2130,9 @@ async function recreatePoseLandmarker() {
         poseLandmarker = null;
     }
     resetRuntimeState();
+    // Новый экземпляр детектора ничего не помнит, поэтому счётчик меток начинаем
+    // заново. Только здесь: при обычном рестарте игры модель та же самая.
+    poseDetectTsMs = 0;
     await createPoseLandmarkerInstance();
 }
 
@@ -2090,8 +2357,12 @@ function gameLoop(nowTime) {
         prevVideoTimeForInterval = video.currentTime;
         lastVideoTime = video.currentTime;
         gotNewVideoPoseFrame = true;
-        let frameTsMs = Number.isFinite(video.currentTime) ? video.currentTime * 1000 : startTimeMs;
-        if (frameTsMs <= poseDetectTsMs) frameTsMs = poseDetectTsMs + 1;
+        // Метка обязана строго расти за всё время жизни экземпляра детектора:
+        // на убывающей MediaPipe уводит граф в ошибку, и трекер молча умирает
+        // до перезагрузки страницы. poseDetectTsMs живёт через рестарты игры,
+        // поэтому здесь достаточно всегда двигаться вперёд от него.
+        const videoTsMs = Number.isFinite(video.currentTime) ? video.currentTime * 1000 : startTimeMs;
+        const frameTsMs = videoTsMs > poseDetectTsMs ? videoTsMs : poseDetectTsMs + 1;
         poseDetectTsMs = frameTsMs;
         try {
             const pRes = poseLandmarker.detectForVideo(video, frameTsMs);
@@ -2284,6 +2555,9 @@ async function start() {
         resizeCanvas();
         await setupWebcam();
         await initializeModels();
+        // Спрайты грузим до меню: без них шляпы падают назад на процедурную
+        // отрисовку, и первые секунды игры выглядели бы иначе.
+        await loadHatSprites();
         loadingElement.classList.remove('visible');
         showMainMenu();
     } catch (e) {

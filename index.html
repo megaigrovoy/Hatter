@@ -27,9 +27,6 @@
       <canvas id="game-canvas"></canvas>
       <div id="ui-layer">
         <div id="hud-game" class="hud-game is-hidden">
-          <div id="game-over-overlay" class="game-over-overlay is-hidden" aria-live="assertive">
-            <span data-i18n="gameOver">ИГРА ОКОНЧЕНА</span>
-          </div>
           <div id="victory-overlay" class="victory-overlay is-hidden" aria-live="polite">
             <span data-i18n="victory">Уровень пройден!</span>
           </div>
@@ -55,23 +52,28 @@
                   <g transform="translate(160 236)">
                     <circle cx="0" cy="-38" r="30" fill="none" stroke="#4fe3a1" stroke-width="5" />
                     <path d="M-40 22 Q0 -6 40 22" fill="none" stroke="#4fe3a1" stroke-width="5" stroke-linecap="round" />
+                    <circle cx="0" cy="-72" r="17" fill="none" stroke="#4fe3a1" stroke-width="3" stroke-dasharray="7 6" />
+                    <path d="M-8 -72 L8 -72 M0 -80 L0 -64" stroke="#4fe3a1" stroke-width="3" stroke-linecap="round" />
                   </g>
-                  <g transform="translate(480 236)" opacity="0.85">
+                  <g transform="translate(480 236)">
                     <circle cx="0" cy="-38" r="30" fill="none" stroke="#ff6b6b" stroke-width="5" />
                     <path d="M-40 22 Q0 -6 40 22" fill="none" stroke="#ff6b6b" stroke-width="5" stroke-linecap="round" />
-                    <g transform="translate(0 -112)">
-                      <ellipse cx="0" cy="20" rx="52" ry="11" fill="#ff6b6b" opacity="0.45" />
-                      <path d="M-28 20 L-23 -22 Q0 -32 23 -22 L28 20 Z" fill="#ff6b6b" opacity="0.45" />
+                    <g transform="translate(58 -46) rotate(38)">
+                      <ellipse cx="0" cy="18" rx="46" ry="10" fill="#ff9a6b" opacity="0.85" />
+                      <path d="M-25 18 L-21 -18 Q0 -27 21 -18 L25 18 Z" fill="#ff9a6b" opacity="0.85" />
                     </g>
-                    <path d="M-56 -96 L56 4 M56 -96 L-56 4" stroke="#ff6b6b" stroke-width="6" stroke-linecap="round" opacity="0.9" />
+                    <path d="M20 -84 Q48 -74 62 -56" fill="none" stroke="#ff6b6b" stroke-width="4"
+                          stroke-linecap="round" stroke-dasharray="8 7" />
+                    <path d="M56 -62 L64 -54 L54 -50" fill="none" stroke="#ff6b6b" stroke-width="4"
+                          stroke-linecap="round" stroke-linejoin="round" />
                   </g>
                 </svg>
                 <div class="catch-tutorial-labels">
                   <div class="catch-tutorial-half">
-                    <span class="catch-tutorial-label" data-i18n="tutCatch">Подставь голову — шляпа наденется</span>
+                    <span class="catch-tutorial-label" data-i18n="tutCatch">Поймай шляпу центром макушки</span>
                   </div>
                   <div class="catch-tutorial-half">
-                    <span class="catch-tutorial-label" data-i18n="tutMiss">Упавшая шляпа — минус жизнь</span>
+                    <span class="catch-tutorial-label" data-i18n="tutMiss">Заденешь краем — шляпа собьётся и упадёт</span>
                   </div>
                 </div>
               </div>
@@ -93,7 +95,7 @@
           <h1 id="score-display">Счёт: 0</h1>
           <div class="hud-row">
             <span id="level-display">Уровень: 1</span>
-            <span id="lives-display" class="lives-display"></span>
+            <span id="streak-display" class="streak-display"></span>
             <span id="players-display"></span>
           </div>
           <div id="quota-display" class="quota-display"></div>

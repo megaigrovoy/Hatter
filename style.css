@@ -87,24 +87,6 @@ canvas {
   pointer-events: none;
 }
 
-.game-over-overlay {
-  order: -1;
-  width: 100%;
-  text-align: center;
-  font-weight: 900;
-  font-size: clamp(1.75rem, 8vw, 4rem);
-  letter-spacing: 0.12em;
-  color: #ff5252;
-  text-shadow:
-    0 0 12px rgba(255, 82, 82, 0.95),
-    0 0 28px rgba(163, 123, 255, 0.45);
-  pointer-events: none;
-}
-
-.game-over-overlay.is-hidden {
-  display: none;
-}
-
 .victory-overlay {
   position: fixed;
   inset: 0;
@@ -370,12 +352,12 @@ canvas {
   text-shadow: 0 0 8px var(--hat-gold);
 }
 
-.lives-display {
+.streak-display {
   font-size: 1.1rem;
-  font-weight: 700;
-  letter-spacing: 0.1em;
-  color: #ff8a8a;
-  text-shadow: 0 0 10px rgba(255, 107, 107, 0.6);
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  color: var(--hat-gold);
+  text-shadow: 0 0 10px rgba(255, 207, 77, 0.6);
 }
 
 #players-display {
