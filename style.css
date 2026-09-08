@@ -1,7 +1,7 @@
 :root {
   --hat-violet: #a37bff;
   --hat-gold: #ffcf4d;
-  --bg-dark: #0d0a18;
+  --bg-dark: #070c17;
 }
 
 * {
@@ -221,11 +221,11 @@ canvas {
   width: min(92vw, 420px);
   padding: 1.5rem 1.35rem 1.25rem;
   border-radius: 18px;
-  border: 1px solid rgba(255, 207, 77, 0.35);
+  border: 1px solid rgba(255, 178, 25, 0.34);
   background: linear-gradient(165deg, rgba(26, 17, 46, 0.96) 0%, rgba(12, 8, 22, 0.98) 100%);
   box-shadow:
-    0 0 28px rgba(255, 207, 77, 0.25),
-    0 0 48px rgba(163, 123, 255, 0.18);
+    0 0 28px rgba(255, 178, 25, 0.25),
+    0 0 48px rgba(86, 193, 252, 0.18);
   text-align: center;
   max-height: min(92vh, 92dvh);
   overflow-y: auto;
@@ -238,8 +238,8 @@ canvas {
   letter-spacing: 0.06em;
   color: var(--hat-gold);
   text-shadow:
-    0 0 14px rgba(255, 207, 77, 0.9),
-    0 0 28px rgba(163, 123, 255, 0.45);
+    0 0 14px rgba(255, 178, 25, 0.9),
+    0 0 28px rgba(86, 193, 252, 0.45);
 }
 
 .campaign-score-line,
@@ -260,7 +260,7 @@ canvas {
   padding: 0.85rem 0.95rem;
   border-radius: 12px;
   background: rgba(0, 0, 0, 0.28);
-  border: 1px solid rgba(163, 123, 255, 0.22);
+  border: 1px solid rgba(86, 193, 252, 0.22);
   text-align: left;
 }
 
@@ -294,7 +294,7 @@ canvas {
 }
 
 .leaderboard-list li.is-highlight {
-  background: rgba(255, 207, 77, 0.18);
+  background: rgba(255, 178, 25, 0.18);
   color: #ffe6a3;
 }
 
@@ -390,7 +390,7 @@ canvas {
 
 .btn-menu:hover {
   border-color: var(--hat-violet);
-  box-shadow: 0 0 14px rgba(163, 123, 255, 0.35);
+  box-shadow: 0 0 14px rgba(86, 193, 252, 0.35);
 }
 
 /** Кнопка «Меню» во время игры — внизу по центру, вне поля резки */
@@ -442,26 +442,26 @@ canvas {
 }
 
 .menu-lang-pill:hover span {
-  border-color: rgba(163, 123, 255, 0.35);
+  border-color: rgba(86, 193, 252, 0.35);
   color: var(--poster-ink);
 }
 
 #opt-lang-ru:checked + span {
-  border-color: rgba(163, 123, 255, 0.7);
-  background: linear-gradient(125deg, var(--poster-violet-soft) 0%, rgba(163, 123, 255, 0.08) 100%);
+  border-color: rgba(86, 193, 252, 0.7);
+  background: linear-gradient(125deg, var(--poster-sky-soft) 0%, rgba(86, 193, 252, 0.08) 100%);
   color: #fff;
-  box-shadow: 0 0 16px var(--poster-violet-glow);
+  box-shadow: 0 0 16px var(--poster-sky-glow);
 }
 
 #opt-lang-en:checked + span {
-  border-color: rgba(255, 207, 77, 0.75);
-  background: linear-gradient(125deg, var(--poster-gold-soft) 0%, rgba(255, 207, 77, 0.08) 100%);
+  border-color: rgba(255, 178, 25, 0.75);
+  background: linear-gradient(125deg, var(--poster-amber-soft) 0%, rgba(255, 178, 25, 0.08) 100%);
   color: #fff;
-  box-shadow: 0 0 16px var(--poster-gold-glow);
+  box-shadow: 0 0 16px var(--poster-amber-glow);
 }
 
 .menu-lang-pill input:focus-visible + span {
-  outline: 2px solid var(--poster-violet);
+  outline: 2px solid var(--poster-sky);
   outline-offset: 2px;
 }
 
@@ -491,26 +491,26 @@ canvas {
 }
 
 .btn-player-count:hover {
-  border-color: rgba(163, 123, 255, 0.35);
+  border-color: rgba(86, 193, 252, 0.35);
   color: var(--poster-ink);
 }
 
 #btn-players-1.is-selected {
-  border-color: rgba(163, 123, 255, 0.75);
-  background: linear-gradient(125deg, var(--poster-violet-soft) 0%, rgba(163, 123, 255, 0.08) 100%);
+  border-color: rgba(86, 193, 252, 0.75);
+  background: linear-gradient(125deg, var(--poster-sky-soft) 0%, rgba(86, 193, 252, 0.08) 100%);
   color: #fff;
-  box-shadow: 0 0 16px var(--poster-violet-glow);
+  box-shadow: 0 0 16px var(--poster-sky-glow);
 }
 
 #btn-players-2.is-selected {
-  border-color: rgba(255, 207, 77, 0.78);
-  background: linear-gradient(125deg, var(--poster-gold-soft) 0%, rgba(255, 207, 77, 0.08) 100%);
+  border-color: rgba(255, 178, 25, 0.78);
+  background: linear-gradient(125deg, var(--poster-amber-soft) 0%, rgba(255, 178, 25, 0.08) 100%);
   color: #fff;
-  box-shadow: 0 0 16px var(--poster-gold-glow);
+  box-shadow: 0 0 16px var(--poster-amber-glow);
 }
 
 .btn-player-count:focus-visible {
-  outline: 2px solid var(--poster-violet);
+  outline: 2px solid var(--poster-sky);
   outline-offset: 2px;
 }
 
@@ -534,13 +534,13 @@ canvas {
 }
 
 .menu-volume-row:first-of-type .menu-volume-value {
-  color: var(--poster-violet);
-  text-shadow: 0 0 10px var(--poster-violet-glow);
+  color: var(--poster-sky);
+  text-shadow: 0 0 10px var(--poster-sky-glow);
 }
 
 .menu-volume-row:last-of-type .menu-volume-value {
-  color: var(--poster-gold);
-  text-shadow: 0 0 10px var(--poster-gold-glow);
+  color: var(--poster-amber);
+  text-shadow: 0 0 10px var(--poster-amber-glow);
 }
 
 .menu-volume-value {
@@ -549,11 +549,11 @@ canvas {
 }
 
 .menu-volume-row:first-of-type .menu-volume-slider {
-  accent-color: var(--poster-violet);
+  accent-color: var(--poster-sky);
 }
 
 .menu-volume-row:last-of-type .menu-volume-slider {
-  accent-color: var(--poster-gold);
+  accent-color: var(--poster-amber);
 }
 
 .menu-volume-slider {
@@ -576,16 +576,16 @@ canvas {
 }
 
 .btn-fullscreen:hover {
-  border-color: rgba(255, 207, 77, 0.45);
+  border-color: rgba(255, 178, 25, 0.45);
 }
 
 .btn-fullscreen.is-active {
-  border-color: rgba(255, 207, 77, 0.65);
-  box-shadow: 0 0 16px var(--poster-gold-glow);
+  border-color: rgba(255, 178, 25, 0.65);
+  box-shadow: 0 0 16px var(--poster-amber-glow);
 }
 
 .btn-fullscreen:focus-visible {
-  outline: 2px solid var(--poster-violet);
+  outline: 2px solid var(--poster-sky);
   outline-offset: 3px;
 }
 
@@ -643,16 +643,19 @@ canvas {
 }
 
 .menu-overlay {
-  --poster-violet: #a37bff;
-  --poster-violet-soft: rgba(163, 123, 255, 0.28);
-  --poster-violet-glow: rgba(163, 123, 255, 0.38);
-  --poster-gold: #ffcf4d;
-  --poster-gold-soft: rgba(255, 207, 77, 0.26);
-  --poster-gold-glow: rgba(255, 207, 77, 0.36);
-  --poster-ink: #f3eefc;
-  --poster-muted: rgba(200, 190, 214, 0.78);
-  --poster-panel: rgba(15, 10, 28, 0.94);
-  --poster-card: linear-gradient(165deg, rgba(27, 18, 51, 0.94) 0%, rgba(9, 6, 20, 0.92) 100%);
+  /* Палитра меню взята из самой заставки: небо #56c1fc, янтарь букв #ffb219,
+     терракота черепицы. Фон — тот же городок вечером, поэтому синий, а не
+     фиолетовый: холодная тёмная подложка не спорит с тёплой иллюстрацией. */
+  --poster-sky: #6cc5f7;
+  --poster-sky-soft: rgba(86, 193, 252, 0.26);
+  --poster-sky-glow: rgba(86, 193, 252, 0.34);
+  --poster-amber: #ffb219;
+  --poster-amber-soft: rgba(255, 178, 25, 0.24);
+  --poster-amber-glow: rgba(255, 178, 25, 0.34);
+  --poster-ink: #eaf2fb;
+  --poster-muted: rgba(157, 176, 200, 0.82);
+  --poster-panel: rgba(19, 29, 51, 0.94);
+  --poster-card: linear-gradient(165deg, rgba(26, 40, 68, 0.94) 0%, rgba(9, 15, 28, 0.92) 100%);
 
   position: absolute;
   inset: 0;
@@ -668,9 +671,9 @@ canvas {
   -webkit-overflow-scrolling: touch;
   overscroll-behavior: contain;
   background:
-    radial-gradient(ellipse 90% 55% at 12% 8%, rgba(163, 123, 255, 0.16), transparent 58%),
-    radial-gradient(ellipse 85% 50% at 88% 92%, rgba(255, 207, 77, 0.12), transparent 55%),
-    rgba(9, 6, 18, 0.96);
+    radial-gradient(ellipse 90% 55% at 12% 8%, rgba(86, 193, 252, 0.14), transparent 58%),
+    radial-gradient(ellipse 85% 50% at 88% 92%, rgba(255, 178, 25, 0.12), transparent 55%),
+    rgba(5, 9, 18, 0.96);
 }
 
 .menu-overlay.is-hidden {
@@ -682,11 +685,11 @@ canvas {
   max-width: min(640px, 94vw);
   padding: 1.75rem 2rem;
   border-radius: 22px;
-  border: 1px solid rgba(163, 123, 255, 0.24);
+  border: 1px solid rgba(108, 197, 247, 0.22);
   background: var(--poster-panel);
   box-shadow:
-    0 0 36px var(--poster-violet-glow),
-    0 0 48px var(--poster-gold-glow),
+    0 0 36px var(--poster-sky-glow),
+    0 0 48px var(--poster-amber-glow),
     inset 0 1px 0 rgba(255, 255, 255, 0.05);
   text-align: center;
   transform: translateZ(0);
@@ -702,10 +705,10 @@ canvas {
   margin: 0 auto 1.15rem;
   border-radius: 18px;
   overflow: hidden;
-  border: 1px solid rgba(255, 207, 77, 0.35);
+  border: 1px solid rgba(255, 178, 25, 0.35);
   box-shadow:
-    0 0 24px var(--poster-violet-glow),
-    0 0 32px var(--poster-gold-glow),
+    0 0 24px var(--poster-sky-glow),
+    0 0 32px var(--poster-amber-glow),
     inset 0 1px 0 rgba(255, 255, 255, 0.06);
   line-height: 0;
   background: rgba(7, 5, 16, 0.95);
@@ -753,13 +756,13 @@ canvas {
 
 .menu-inline-panel {
   border-radius: 16px;
-  border: 1px solid rgba(163, 123, 255, 0.22);
+  border: 1px solid rgba(86, 193, 252, 0.22);
   background: var(--poster-card);
   padding: 0.65rem 0.75rem 0.75rem;
   box-shadow:
     inset 0 1px 0 rgba(255, 255, 255, 0.04),
-    0 0 18px rgba(163, 123, 255, 0.08),
-    0 0 20px rgba(255, 207, 77, 0.06);
+    0 0 18px rgba(86, 193, 252, 0.08),
+    0 0 20px rgba(255, 178, 25, 0.06);
 }
 
 .menu-inline-panel-title {
@@ -768,12 +771,12 @@ canvas {
   font-weight: 800;
   letter-spacing: 0.14em;
   text-transform: uppercase;
-  background: linear-gradient(90deg, var(--poster-violet) 0%, var(--poster-gold) 100%);
+  background: linear-gradient(90deg, var(--poster-sky) 0%, var(--poster-amber) 100%);
   -webkit-background-clip: text;
   background-clip: text;
   color: transparent;
   margin-bottom: 0.48rem;
-  filter: drop-shadow(0 0 8px rgba(163, 123, 255, 0.3));
+  filter: drop-shadow(0 0 8px rgba(86, 193, 252, 0.3));
 }
 
 .btn-menu-action {
@@ -787,7 +790,7 @@ canvas {
   flex: 0 1 auto;
   padding: 0.55rem 0.65rem;
   border-radius: 14px;
-  border: 1px solid rgba(163, 123, 255, 0.32);
+  border: 1px solid rgba(86, 193, 252, 0.32);
   background: var(--poster-card);
   color: var(--poster-ink);
   font: inherit;
@@ -799,19 +802,19 @@ canvas {
   cursor: pointer;
   box-shadow:
     inset 0 1px 0 rgba(255, 255, 255, 0.04),
-    0 0 14px rgba(163, 123, 255, 0.1);
+    0 0 14px rgba(86, 193, 252, 0.1);
   transition: border-color 0.2s, box-shadow 0.2s, background 0.2s;
 }
 
 .btn-menu-action:hover {
-  border-color: rgba(255, 207, 77, 0.45);
+  border-color: rgba(255, 178, 25, 0.45);
   box-shadow:
-    0 0 16px var(--poster-violet-glow),
-    0 0 20px var(--poster-gold-glow);
+    0 0 16px var(--poster-sky-glow),
+    0 0 20px var(--poster-amber-glow);
 }
 
 .btn-menu-action:focus-visible {
-  outline: 2px solid var(--poster-violet);
+  outline: 2px solid var(--poster-sky);
   outline-offset: 3px;
 }
 
@@ -822,13 +825,14 @@ canvas {
   letter-spacing: 0.06em;
   padding: 0.95rem 2.75rem;
   border-radius: 999px;
-  border: 2px solid rgba(163, 123, 255, 0.55);
-  color: #100722;
+  border: 2px solid rgba(255, 178, 25, 0.5);
+  color: #0a1120;
   cursor: pointer;
-  background: linear-gradient(125deg, #a37bff 0%, #c9a6ff 42%, #ffcf4d 100%);
+  /* Небо -> янтарь названия: главная пара цветов заставки. */
+  background: linear-gradient(125deg, #56c1fc 0%, #8fd6ff 38%, #ffb219 100%);
   box-shadow:
-    0 0 22px var(--poster-violet-glow),
-    0 0 28px var(--poster-gold-glow),
+    0 0 22px var(--poster-sky-glow),
+    0 0 28px var(--poster-amber-glow),
     0 8px 24px rgba(0, 0, 0, 0.4);
   transition: transform 0.14s ease, box-shadow 0.14s ease, filter 0.14s ease;
 }
@@ -837,8 +841,8 @@ canvas {
   transform: translateY(-2px) scale(1.02);
   filter: brightness(1.06);
   box-shadow:
-    0 0 32px var(--poster-gold-glow),
-    0 0 40px var(--poster-violet-glow),
+    0 0 32px var(--poster-amber-glow),
+    0 0 40px var(--poster-sky-glow),
     0 12px 28px rgba(0, 0, 0, 0.45);
 }
 
@@ -850,12 +854,12 @@ canvas {
   text-align: left;
   padding: 1rem 1.1rem;
   border-radius: 16px;
-  border: 1px solid rgba(163, 123, 255, 0.22);
+  border: 1px solid rgba(86, 193, 252, 0.22);
   background: var(--poster-card);
   box-shadow:
     inset 0 1px 0 rgba(255, 255, 255, 0.04),
-    0 0 20px rgba(163, 123, 255, 0.08),
-    0 0 24px rgba(255, 207, 77, 0.06);
+    0 0 20px rgba(86, 193, 252, 0.08),
+    0 0 24px rgba(255, 178, 25, 0.06);
 }
 
 .menu-options-title {
@@ -863,12 +867,12 @@ canvas {
   font-weight: 800;
   letter-spacing: 0.1em;
   text-transform: uppercase;
-  background: linear-gradient(90deg, var(--poster-violet) 0%, var(--poster-gold) 100%);
+  background: linear-gradient(90deg, var(--poster-sky) 0%, var(--poster-amber) 100%);
   -webkit-background-clip: text;
   background-clip: text;
   color: transparent;
   margin-bottom: 0.75rem;
-  filter: drop-shadow(0 0 10px rgba(163, 123, 255, 0.35));
+  filter: drop-shadow(0 0 10px rgba(86, 193, 252, 0.35));
 }
 
 #loading {
@@ -884,7 +888,7 @@ canvas {
   border: 1px solid rgba(255, 255, 255, 0.1);
   font-size: 1.5rem;
   font-weight: 700;
-  box-shadow: 0 0 30px rgba(163, 123, 255, 0.32);
+  box-shadow: 0 0 30px rgba(86, 193, 252, 0.32);
   opacity: 0;
   transition: opacity 0.5s ease;
   display: flex;
@@ -902,7 +906,7 @@ canvas {
 #loading-logo {
   font-size: clamp(3rem, 14vw, 5rem);
   line-height: 1;
-  filter: drop-shadow(0 0 18px rgba(163, 123, 255, 0.6));
+  filter: drop-shadow(0 0 18px rgba(86, 193, 252, 0.6));
   user-select: none;
 }
 
