@@ -65,6 +65,8 @@ const I18N_STRINGS = {
         tutMiss: 'Заденешь краем — шляпа собьётся и упадёт',
         levelLabel: 'Уровень',
         streakLabel: 'Серия',
+        perkShield: 'Шлем спас!',
+        perkStreak: 'Серия цела!',
         quotaLabel: 'Поймать',
         loadingModels: 'Загрузка моделей…',
         players1ok: 'Режим: 1 игрок',
@@ -105,6 +107,8 @@ const I18N_STRINGS = {
         tutMiss: 'Clip it with the edge and it is knocked away',
         levelLabel: 'Level',
         streakLabel: 'Streak',
+        perkShield: 'Helmet saved you!',
+        perkStreak: 'Streak held!',
         quotaLabel: 'Catch',
         loadingModels: 'Loading models…',
         players1ok: 'Mode: 1 player',
@@ -312,6 +316,11 @@ function playKnockSound() {
     playToneSequence([330, 247], { type: 'triangle', step: 0.05, dur: 0.12, gain: 0.09 });
 }
 
+/** Сработала защита: шлем принял ловушку или бейсболка удержала серию. */
+function playShieldSound() {
+    playToneSequence([880, 1174.7, 1567.98], { type: 'triangle', step: 0.05, dur: 0.2, gain: 0.14 });
+}
+
 function playBonusSound() {
     playToneSequence([659.25, 880, 1046.5, 1318.5], { type: 'square', step: 0.06, dur: 0.13, gain: 0.13 });
 }
@@ -496,11 +505,11 @@ const LEVEL_QUOTA = 40;
  * растянулись бы на несколько минут ожидания.
  */
 const LEVEL_SPECS = [
-    { quota: LEVEL_QUOTA, spawnMs: 1500, fallMul: 0.85, swayMul: 0.8, bombChance: 0.0, goldenChance: 0.06, maxAir: 2 },
-    { quota: LEVEL_QUOTA, spawnMs: 1350, fallMul: 1.0, swayMul: 1.0, bombChance: 0.1, goldenChance: 0.08, maxAir: 3 },
-    { quota: LEVEL_QUOTA, spawnMs: 1200, fallMul: 1.15, swayMul: 1.15, bombChance: 0.16, goldenChance: 0.1, maxAir: 3 },
-    { quota: LEVEL_QUOTA, spawnMs: 1080, fallMul: 1.32, swayMul: 1.3, bombChance: 0.2, goldenChance: 0.11, maxAir: 4 },
-    { quota: LEVEL_QUOTA, spawnMs: 950, fallMul: 1.5, swayMul: 1.45, bombChance: 0.24, goldenChance: 0.12, maxAir: 4 }
+    { quota: LEVEL_QUOTA, spawnMs: 1500, fallMul: 0.85, swayMul: 0.8, bombChance: 0.0, maxAir: 2 },
+    { quota: LEVEL_QUOTA, spawnMs: 1350, fallMul: 1.0, swayMul: 1.0, bombChance: 0.1, maxAir: 3 },
+    { quota: LEVEL_QUOTA, spawnMs: 1200, fallMul: 1.15, swayMul: 1.15, bombChance: 0.16, maxAir: 3 },
+    { quota: LEVEL_QUOTA, spawnMs: 1080, fallMul: 1.32, swayMul: 1.3, bombChance: 0.2, maxAir: 4 },
+    { quota: LEVEL_QUOTA, spawnMs: 950, fallMul: 1.5, swayMul: 1.45, bombChance: 0.24, maxAir: 4 }
 ];
 
 function getLevelSpec(level = currentLevel) {
@@ -573,6 +582,9 @@ const HAT_TYPES = {
         seatYFrac: 0.586,
         artWidthFrac: 0.627,
         brimMul: 1.0,
+        // Цилиндр — эталон: ровное планирование без особенностей.
+        fallMul: 1.0,
+        swayMul: 1.0,
         crown: '#6f9dd0',
         crownLight: '#a8c8e8',
         band: '#f0a028'
@@ -586,6 +598,9 @@ const HAT_TYPES = {
         seatYFrac: 0.533,
         artWidthFrac: 0.689,
         brimMul: 1.02,
+        // Перья ловят воздух: качает шире, падает чуть медленнее.
+        fallMul: 0.9,
+        swayMul: 1.35,
         crown: '#4a6b3a',
         crownLight: '#7d9b64',
         band: '#8b4a2f'
@@ -599,6 +614,9 @@ const HAT_TYPES = {
         seatYFrac: 0.576,
         artWidthFrac: 0.707,
         brimMul: 0.98,
+        // Гладкий и плотный: почти не рыскает, идёт быстрее.
+        fallMul: 1.12,
+        swayMul: 0.55,
         crown: '#2b2b2f',
         crownLight: '#5a5a62',
         band: '#151518'
@@ -612,6 +630,10 @@ const HAT_TYPES = {
         seatYFrac: 0.643,
         artWidthFrac: 0.771,
         brimMul: 1.0,
+        // Длинный конус парусит: медленный и заметно виляет.
+        fallMul: 0.72,
+        swayMul: 1.15,
+        perk: 'zone',
         crown: '#3b4585',
         crownLight: '#6b76c4',
         band: '#e8b45c'
@@ -625,6 +647,10 @@ const HAT_TYPES = {
         seatYFrac: 0.572,
         artWidthFrac: 0.551,
         brimMul: 0.9,
+        // Лёгкая и компактная, летит ровно.
+        fallMul: 1.05,
+        swayMul: 0.85,
+        perk: 'streak',
         crown: '#3f6191',
         crownLight: '#7ba0cc',
         band: '#e8a33c'
@@ -638,6 +664,9 @@ const HAT_TYPES = {
         seatYFrac: 0.56,
         artWidthFrac: 0.803,
         brimMul: 1.06,
+        // Широкие поля держат воздух: планирует долго.
+        fallMul: 0.82,
+        swayMul: 1.2,
         crown: '#8b5a34',
         crownLight: '#c08a5a',
         band: '#5b3a1c'
@@ -652,6 +681,10 @@ const HAT_TYPES = {
         seatYFrac: 0.6,
         artWidthFrac: 0.693,
         brimMul: 1.02,
+        // Железо: падает камнем, качания почти нет.
+        fallMul: 1.28,
+        swayMul: 0.35,
+        perk: 'shield',
         crown: '#8a8a8f',
         crownLight: '#c9c9d0',
         band: '#b8a068'
@@ -665,6 +698,9 @@ const HAT_TYPES = {
         seatYFrac: 0.72,
         artWidthFrac: 0.572,
         brimMul: 0.98,
+        // Перо парусит сильнее всех: мечется из стороны в сторону.
+        fallMul: 0.68,
+        swayMul: 1.75,
         crown: '#3f6b3a',
         crownLight: '#74a06a',
         band: '#8b5a2f'
@@ -678,6 +714,10 @@ const HAT_TYPES = {
         seatYFrac: 0.72,
         artWidthFrac: 0.813,
         brimMul: 1.08,
+        // Планирует боком, как бумеранг: уходит по дуге в одну сторону.
+        fallMul: 0.95,
+        swayMul: 1.05,
+        glide: true,
         crown: '#232a3a',
         crownLight: '#4a5468',
         band: '#c9a227'
@@ -691,6 +731,9 @@ const HAT_TYPES = {
         seatYFrac: 0.62,
         artWidthFrac: 0.654,
         brimMul: 0.98,
+        // Тяжёлая и плотная: быстро вниз, качается мало.
+        fallMul: 1.22,
+        swayMul: 0.4,
         crown: '#6b4a2c',
         crownLight: '#a67c50',
         band: '#8b3a2f'
@@ -704,22 +747,16 @@ const HAT_TYPES = {
         seatYFrac: 0.62,
         artWidthFrac: 0.76,
         brimMul: 1.02,
+        // Тяжёлая корона: падает быстро, поймать труднее.
+        fallMul: 1.18,
+        swayMul: 0.6,
+        perk: 'double',
         crown: '#2f7a6a',
         crownLight: '#7cc0ad',
         band: '#c9a227'
     },
-    // Золотая и ловушка рисуются процедурно: они должны читаться как особые
+    // Ловушка рисуется процедурно: она должна читаться как чужеродная
     // и не теряться среди обычных шляп.
-    golden: {
-        id: 'golden',
-        score: 150,
-        wearable: true,
-        golden: true,
-        crown: '#ffcf4d',
-        crownLight: '#fff2c2',
-        band: '#a3701a',
-        brimMul: 1.08
-    },
     bomb: {
         id: 'bomb',
         score: 0,
@@ -740,7 +777,6 @@ const WEARABLE_ORDER = [
 function pickHatTypeForLevel(spec) {
     const r = Math.random();
     if (r < spec.bombChance) return HAT_TYPES.bomb;
-    if (r < spec.bombChance + spec.goldenChance) return HAT_TYPES.golden;
     const id = WEARABLE_ORDER[Math.floor(Math.random() * WEARABLE_ORDER.length)];
     return HAT_TYPES[id];
 }
@@ -772,10 +808,6 @@ function drawHatSprite(ctx, type, brimW, opts = {}) {
 
     ctx.save();
     ctx.globalAlpha *= alpha;
-    if (type.golden) {
-        ctx.shadowColor = 'rgba(255, 207, 77, 0.85)';
-        ctx.shadowBlur = brimW * 0.24;
-    }
     // Сдвиг: по X центрируем, по Y поднимаем на долю seatYFrac.
     ctx.drawImage(img, -dw * 0.5, -dh * type.seatYFrac, dw, dh);
     ctx.restore();
@@ -799,10 +831,7 @@ function drawHatShape(ctx, type, brimW, opts = {}) {
     ctx.save();
     ctx.globalAlpha *= alpha;
 
-    if (type.golden) {
-        ctx.shadowColor = 'rgba(255, 207, 77, 0.85)';
-        ctx.shadowBlur = bw * 0.28;
-    } else if (type.bomb) {
+    if (type.bomb) {
         ctx.shadowColor = 'rgba(255, 79, 79, 0.75)';
         ctx.shadowBlur = bw * 0.22;
     }
@@ -835,7 +864,7 @@ function drawHatShape(ctx, type, brimW, opts = {}) {
         ctx.quadraticCurveTo(crownW * 0.46, -crownH * 0.92, crownW * 0.5, 0);
         ctx.closePath();
     } else {
-        // top / golden / bomb — цилиндр
+        // цилиндр (ловушка и запасная отрисовка)
         const h = type.bomb ? crownH * 0.78 : crownH;
         ctx.beginPath();
         ctx.moveTo(-crownW * 0.5, 0);
@@ -880,25 +909,6 @@ function drawHatShape(ctx, type, brimW, opts = {}) {
         ctx.moveTo(bw * 0.16, -crownH * 0.2);
         ctx.lineTo(-bw * 0.16, -crownH * 0.62);
         ctx.stroke();
-    }
-
-    // Золотая: блик-звёздочка
-    if (type.golden) {
-        ctx.fillStyle = 'rgba(255, 255, 255, 0.9)';
-        const sx = -crownW * 0.2;
-        const sy = -crownH * 0.62;
-        const r = bw * 0.045;
-        ctx.beginPath();
-        for (let i = 0; i < 8; i++) {
-            const a = (i / 8) * Math.PI * 2;
-            const rr = i % 2 === 0 ? r : r * 0.42;
-            const px = sx + Math.cos(a) * rr;
-            const py = sy + Math.sin(a) * rr;
-            if (i === 0) ctx.moveTo(px, py);
-            else ctx.lineTo(px, py);
-        }
-        ctx.closePath();
-        ctx.fill();
     }
 
     ctx.restore();
@@ -946,12 +956,23 @@ class FallingHat {
         this.baseX = w * (0.12 + Math.random() * 0.76);
         this.x = this.baseX;
         this.y = -this.brimW * 0.6;
-        this.vy = h * 0.00019 * spec.fallMul * (0.85 + Math.random() * 0.3);
-        this.swayAmp = w * 0.055 * spec.swayMul * (0.7 + Math.random() * 0.6);
-        this.swayFreq = 0.0016 + Math.random() * 0.0012;
+        // Скорость и качание = сложность уровня * характер самой шляпы.
+        // Тяжёлое железо падает камнем, перо парусит: шляпу видно по силуэту
+        // и по тому, как она идёт, ещё до того как игрок разглядит рисунок.
+        const kFall = type.fallMul ?? 1;
+        const kSway = type.swayMul ?? 1;
+        this.vy = h * 0.00019 * spec.fallMul * kFall * (0.85 + Math.random() * 0.3);
+        this.swayAmp = w * 0.055 * spec.swayMul * kSway * (0.7 + Math.random() * 0.6);
+        // Тяжёлые шляпы качаются не только слабее, но и реже — читается как вес.
+        this.swayFreq = (0.0016 + Math.random() * 0.0012) * (0.7 + kSway * 0.3);
         this.swayPhase = Math.random() * Math.PI * 2;
         // Медленный дрейф по горизонтали — траектория не строго вертикальная.
-        this.driftVx = w * 0.00002 * (Math.random() * 2 - 1) * spec.swayMul;
+        this.driftVx = w * 0.00002 * (Math.random() * 2 - 1) * spec.swayMul * kSway;
+        // Двууголка идёт по дуге в одну сторону, как брошенный бумеранг:
+        // за ней приходится смещаться, а не ждать на месте.
+        this.glideVx = type.glide
+            ? w * 0.00011 * (Math.random() < 0.5 ? -1 : 1) * spec.swayMul
+            : 0;
         this.ageMs = 0;
         this.rot = 0;
         this.caught = false;
@@ -997,7 +1018,7 @@ class FallingHat {
             return;
         }
 
-        this.baseX += this.driftVx * dtMs;
+        this.baseX += (this.driftVx + this.glideVx) * dtMs;
         const sway = Math.sin(this.ageMs * this.swayFreq + this.swayPhase);
         this.x = this.baseX + sway * this.swayAmp;
         this.y += this.vy * dtMs;
@@ -1127,9 +1148,7 @@ class ScoreFloater {
 }
 
 function spawnCatchBurst(x, y, type) {
-    const colors = type.golden
-        ? ['#ffcf4d', '#fff2c2', '#ffffff', '#ffa726']
-        : [type.crown, type.crownLight, type.band, '#ffffff'];
+    const colors = [type.crown, type.crownLight, type.band, '#ffffff'];
     for (let i = 0; i < 22; i++) {
         particles.push(new Particle(x, y, colors[i % colors.length], 'confetti'));
     }
@@ -1522,10 +1541,19 @@ const HEAD_CENTER_HIT_FRAC = 0.68;
 /** Радиус зоны касания: за её пределами шляпа пролетает мимо, не задев голову. */
 const HEAD_CONTACT_FRAC = 1.0;
 
-/** Круг точной посадки: попал сюда центром шляпы — надел. */
-function headSeatDisc(st) {
+/** Насколько колпак волшебника расширяет зону точной посадки. */
+const PERK_ZONE_MUL = 1.4;
+
+/**
+ * Круг точной посадки: попал сюда центром шляпы — надел.
+ * Колпак волшебника на голове расширяет его: ловить становится заметно легче,
+ * поэтому колпак хочется сохранить, а не менять на первую встречную шляпу.
+ */
+function headSeatDisc(st, poseKey) {
     const crown = headCrownPoint(st);
-    return { x: crown.x, y: crown.y, r: st.earSpan * HEAD_CENTER_HIT_FRAC };
+    const perk = poseKey ? wornHatByPoseKey.get(poseKey)?.type.perk : null;
+    const mul = perk === 'zone' ? PERK_ZONE_MUL : 1;
+    return { x: crown.x, y: crown.y, r: st.earSpan * HEAD_CENTER_HIT_FRAC * mul };
 }
 
 /** Круг касания: задел край — шляпа отлетает и падает дальше. */
@@ -1594,6 +1622,51 @@ function drawCatchHint(ctx, poseKey) {
     ctx.restore();
 }
 
+/** Цвет метки активного эффекта — совпадает с самой шляпой. */
+const PERK_TINT = {
+    shield: '#c9c9d0',
+    zone: '#8fd6ff',
+    double: '#ffb219',
+    streak: '#7ba0cc'
+};
+
+/**
+ * Подсветка активного эффекта надетой шляпы. Без неё игрок не знает, что
+ * колпак расширил зону или что корона удваивает очки, — способность работала бы
+ * незаметно и не влияла на решения.
+ */
+function drawActivePerk(ctx, poseKey) {
+    const st = headOverlayByPoseKey.get(poseKey);
+    if (!st || !st.earSpan) return;
+    const worn = wornHatByPoseKey.get(poseKey);
+    const perk = worn?.type.perk;
+    if (!perk) return;
+
+    const seat = headSeatDisc(st, poseKey);
+    const pulse = 0.5 + 0.5 * Math.sin(performance.now() * 0.004);
+    const tint = PERK_TINT[perk] ?? '#ffffff';
+
+    ctx.save();
+    ctx.strokeStyle = tint;
+    ctx.globalAlpha = 0.22 + pulse * 0.24;
+    ctx.lineWidth = Math.max(2, st.earSpan * 0.05);
+    if (perk === 'zone') {
+        // Колпак: показываем расширенную зону — её и надо использовать.
+        ctx.setLineDash([st.earSpan * 0.2, st.earSpan * 0.14]);
+        ctx.beginPath();
+        ctx.arc(seat.x, seat.y, seat.r, 0, Math.PI * 2);
+        ctx.stroke();
+    } else {
+        // Остальные эффекты зону не меняют: тонкая дуга-корона над головой.
+        ctx.setLineDash([]);
+        ctx.lineCap = 'round';
+        ctx.beginPath();
+        ctx.arc(seat.x, seat.y, st.earSpan * 0.9, Math.PI * 1.18, Math.PI * 1.82);
+        ctx.stroke();
+    }
+    ctx.restore();
+}
+
 function circleHit(ax, ay, ar, bx, by, br) {
     const dx = ax - bx;
     const dy = ay - by;
@@ -1612,6 +1685,21 @@ function circleHit(ax, ay, ar, bx, by, br) {
  */
 function registerMiss(reason) {
     if (!isPlaying || victoryTransitionActive) return;
+
+    // Бейсболка держит серию на одном промахе и тут же слетает: страховка
+    // одноразовая, иначе она обесценила бы саму серию.
+    for (const [poseKey, worn] of wornHatByPoseKey) {
+        if (worn.type.perk !== 'streak') continue;
+        wornHatByPoseKey.delete(poseKey);
+        const st = headOverlayByPoseKey.get(poseKey);
+        if (st?.earSpan) {
+            const crown = headCrownPoint(st);
+            floaters.push(new ScoreFloater(crown.x, crown.y, t('perkStreak'), '#7ba0cc'));
+        }
+        playShieldSound();
+        return;
+    }
+
     comboStreak = 0;
     updateStreakDisplay();
     if (reason === 'bomb') playBombSound();
@@ -1624,6 +1712,15 @@ function catchHat(hat, poseKey, disc) {
     hat.dead = true;
 
     if (hat.type.bomb) {
+        const worn = wornHatByPoseKey.get(poseKey);
+        if (worn?.type.perk === 'shield') {
+            // Шлем принимает удар на себя и слетает, но серия уцелела.
+            wornHatByPoseKey.delete(poseKey);
+            spawnCatchBurst(disc.x, disc.y, worn.type);
+            floaters.push(new ScoreFloater(disc.x, disc.y, t('perkShield'), '#c9c9d0'));
+            playShieldSound();
+            return;
+        }
         // Ловушка сбивает надетую шляпу и обрывает серию — этого достаточно,
         // чтобы её хотелось избегать, без отнятия жизней.
         wornHatByPoseKey.delete(poseKey);
@@ -1633,12 +1730,17 @@ function catchHat(hat, poseKey, disc) {
         return;
     }
 
+    // Корона удваивает очки, пока она на голове. Считаем ДО замены: платит
+    // та шляпа, которую игрок носил, а не та, что он только что поймал.
+    const prevWorn = wornHatByPoseKey.get(poseKey);
+    const doubled = prevWorn?.type.perk === 'double';
+
     // Новая шляпа заменяет старую и держится, пока не поймана следующая.
     wornHatByPoseKey.set(poseKey, { type: hat.type, sinceMs: performance.now() });
 
     comboStreak += 1;
     const comboBonus = Math.min(comboStreak - 1, 5) * 10;
-    const gained = hat.type.score + comboBonus;
+    const gained = (hat.type.score + comboBonus) * (doubled ? 2 : 1);
     score += gained;
     caughtThisLevel += 1;
     scoreDisplay.innerText = formatScore(score);
@@ -1647,11 +1749,15 @@ function catchHat(hat, poseKey, disc) {
 
     spawnCatchBurst(disc.x, disc.y, hat.type);
     floaters.push(
-        new ScoreFloater(disc.x, disc.y - disc.r * 0.6, `+${gained}`, hat.type.golden ? '#ffcf4d' : '#ffffff')
+        new ScoreFloater(
+            disc.x,
+            disc.y - disc.r * 0.6,
+            doubled ? `+${gained} ×2` : `+${gained}`,
+            doubled ? '#ffb219' : '#ffffff'
+        )
     );
 
-    if (hat.type.golden) playBonusSound();
-    else playCatchSound(comboStreak - 1);
+    playCatchSound(comboStreak - 1);
 
     if (caughtThisLevel >= levelQuota) advanceLevel();
 }
@@ -1737,7 +1843,7 @@ function updateHatCatching(orderedPersons) {
             const st = headOverlayByPoseKey.get(poseKey);
             if (!st || !st.earSpan) continue;
 
-            const seat = headSeatDisc(st);
+            const seat = headSeatDisc(st, poseKey);
             const dx = cp.x - seat.x;
             const dy = cp.y - seat.y;
 
@@ -2549,6 +2655,7 @@ function gameLoop(nowTime) {
     // orderedPersons заставлял бы шляпу мигать на каждом таком пропуске.
     for (const poseKey of headOverlayByPoseKey.keys()) {
         drawCatchHint(canvasCtx, poseKey);
+        drawActivePerk(canvasCtx, poseKey);
         drawWornHat(canvasCtx, poseKey);
     }
 
