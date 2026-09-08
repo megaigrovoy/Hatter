@@ -19,6 +19,8 @@
     <link rel="preload" href="/mediapipe-wasm/vision_wasm_internal.js" as="script" />
     <link rel="preload" href="/mediapipe-wasm/vision_wasm_internal.wasm" as="fetch" type="application/wasm" />
     <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;700;900&display=swap" rel="stylesheet" />
+    <!-- Заставка меню — первое, что видит игрок: грузим её параллельно скриптам. -->
+    <link rel="preload" href="./src/assets/img/menu.webp" as="image" />
     <link rel="stylesheet" href="/style.css">
   </head>
   <body>
@@ -104,42 +106,16 @@
         <div id="main-menu" class="menu-overlay is-hidden">
           <div class="menu-panel">
             <div class="menu-poster-wrap">
-              <div class="menu-poster" role="img" aria-label="Hatter">
-                <svg viewBox="0 0 640 360" class="menu-poster-svg" aria-hidden="true">
-                  <defs>
-                    <linearGradient id="posterBg" x1="0" y1="0" x2="1" y2="1">
-                      <stop offset="0" stop-color="#1b1233" />
-                      <stop offset="1" stop-color="#0d0a18" />
-                    </linearGradient>
-                    <linearGradient id="posterHat" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="0" stop-color="#d6bcff" />
-                      <stop offset="1" stop-color="#7b4dff" />
-                    </linearGradient>
-                  </defs>
-                  <rect width="640" height="360" fill="url(#posterBg)" />
-                  <g opacity="0.5">
-                    <circle cx="90" cy="86" r="2.5" fill="#8fd6ff" />
-                    <circle cx="520" cy="52" r="2" fill="#ffcf4d" />
-                    <circle cx="586" cy="150" r="2.5" fill="#ff9de2" />
-                    <circle cx="58" cy="230" r="2" fill="#8fd6ff" />
-                  </g>
-                  <g transform="translate(150 116) rotate(-13)">
-                    <ellipse cx="0" cy="26" rx="66" ry="14" fill="url(#posterHat)" opacity="0.9" />
-                    <path d="M-36 26 L-30 -30 Q0 -44 30 -30 L36 26 Z" fill="url(#posterHat)" />
-                    <rect x="-32" y="6" width="64" height="13" rx="5" fill="#ffcf4d" />
-                  </g>
-                  <g transform="translate(474 132) rotate(15)">
-                    <ellipse cx="0" cy="22" rx="52" ry="11" fill="#4fe3a1" opacity="0.85" />
-                    <path d="M-28 22 L-23 -22 Q0 -33 23 -22 L28 22 Z" fill="#4fe3a1" />
-                    <rect x="-25" y="4" width="50" height="11" rx="4" fill="#0d0a18" opacity="0.55" />
-                  </g>
-                  <g transform="translate(320 300)">
-                    <circle cx="0" cy="-44" r="36" fill="none" stroke="#8fd6ff" stroke-width="6" />
-                    <path d="M-52 30 Q0 -8 52 30" fill="none" stroke="#8fd6ff" stroke-width="6" stroke-linecap="round" />
-                  </g>
-                  <text x="320" y="62" text-anchor="middle" font-family="Outfit, sans-serif" font-size="54" font-weight="900" fill="#ffffff" letter-spacing="6">HATTER</text>
-                </svg>
-              </div>
+              <img
+                id="menu-poster-img"
+                class="menu-poster-img"
+                src="./src/assets/img/menu.webp"
+                alt="Hatter"
+                width="2752"
+                height="1536"
+                decoding="async"
+                fetchpriority="high"
+              />
             </div>
             <div class="menu-action-row">
               <button type="button" id="btn-start" class="btn-start menu-action-play" data-i18n="btnStart">Играть</button>

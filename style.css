@@ -711,16 +711,16 @@ canvas {
   background: rgba(7, 5, 16, 0.95);
 }
 
-.menu-poster {
-  display: block;
-  width: 100%;
-}
-
-.menu-poster-svg {
+/* Заставка меню. Соотношение сторон задано атрибутами width/height у <img>,
+   поэтому место резервируется до загрузки и панель меню не прыгает. */
+.menu-poster-img {
   display: block;
   width: 100%;
   height: auto;
   max-height: min(40vh, 320px);
+  /* Название игры нарисовано у верхней кромки, поэтому подрезать нельзя:
+     при упоре в max-height вписываем целиком. */
+  object-fit: contain;
 }
 
 .menu-action-row {
