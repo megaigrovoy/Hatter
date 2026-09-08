@@ -579,7 +579,7 @@ const HAT_TYPES = {
         score: 50,
         wearable: true,
         sprite: 'hat1',
-        seatYFrac: 0.586,
+        seatYFrac: 0.76,
         artWidthFrac: 0.627,
         brimMul: 1.0,
         // Цилиндр — эталон: ровное планирование без особенностей.
@@ -595,7 +595,7 @@ const HAT_TYPES = {
         score: 60,
         wearable: true,
         sprite: 'hat2',
-        seatYFrac: 0.533,
+        seatYFrac: 0.734,
         artWidthFrac: 0.689,
         brimMul: 1.02,
         // Перья ловят воздух: качает шире, падает чуть медленнее.
@@ -611,7 +611,7 @@ const HAT_TYPES = {
         score: 55,
         wearable: true,
         sprite: 'hat3',
-        seatYFrac: 0.576,
+        seatYFrac: 0.732,
         artWidthFrac: 0.707,
         brimMul: 0.98,
         // Гладкий и плотный: почти не рыскает, идёт быстрее.
@@ -627,7 +627,7 @@ const HAT_TYPES = {
         score: 70,
         wearable: true,
         sprite: 'hat4',
-        seatYFrac: 0.643,
+        seatYFrac: 0.734,
         artWidthFrac: 0.771,
         brimMul: 1.0,
         // Длинный конус парусит: медленный и заметно виляет.
@@ -644,7 +644,7 @@ const HAT_TYPES = {
         score: 45,
         wearable: true,
         sprite: 'hat5',
-        seatYFrac: 0.572,
+        seatYFrac: 0.693,
         artWidthFrac: 0.551,
         brimMul: 0.9,
         // Лёгкая и компактная, летит ровно.
@@ -661,7 +661,7 @@ const HAT_TYPES = {
         score: 65,
         wearable: true,
         sprite: 'hat6',
-        seatYFrac: 0.56,
+        seatYFrac: 0.727,
         artWidthFrac: 0.803,
         brimMul: 1.06,
         // Широкие поля держат воздух: планирует долго.
@@ -678,7 +678,7 @@ const HAT_TYPES = {
         score: 75,
         wearable: true,
         sprite: 'hat7',
-        seatYFrac: 0.6,
+        seatYFrac: 0.549,
         artWidthFrac: 0.693,
         brimMul: 1.02,
         // Железо: падает камнем, качания почти нет.
@@ -695,7 +695,7 @@ const HAT_TYPES = {
         score: 70,
         wearable: true,
         sprite: 'hat8',
-        seatYFrac: 0.72,
+        seatYFrac: 0.715,
         artWidthFrac: 0.572,
         brimMul: 0.98,
         // Перо парусит сильнее всех: мечется из стороны в сторону.
@@ -711,7 +711,7 @@ const HAT_TYPES = {
         score: 85,
         wearable: true,
         sprite: 'hat9',
-        seatYFrac: 0.72,
+        seatYFrac: 0.635,
         artWidthFrac: 0.813,
         brimMul: 1.08,
         // Планирует боком, как бумеранг: уходит по дуге в одну сторону.
@@ -728,7 +728,7 @@ const HAT_TYPES = {
         score: 70,
         wearable: true,
         sprite: 'hat10',
-        seatYFrac: 0.62,
+        seatYFrac: 0.537,
         artWidthFrac: 0.654,
         brimMul: 0.98,
         // Тяжёлая и плотная: быстро вниз, качается мало.
@@ -744,7 +744,7 @@ const HAT_TYPES = {
         score: 90,
         wearable: true,
         sprite: 'hat11',
-        seatYFrac: 0.62,
+        seatYFrac: 0.561,
         artWidthFrac: 0.76,
         brimMul: 1.02,
         // Тяжёлая корона: падает быстро, поймать труднее.
@@ -1441,10 +1441,15 @@ const HEAD_SMOOTH_ALPHA = isAndroidBrowser() ? 0.38 : 0.2;
  */
 const WORN_HAT_BRIM_MUL = 2.0;
 /**
- * Насколько выше линии ушей садится шляпа, в долях межушного расстояния.
- * Это макушка: точка, с которой совмещается линия посадки спрайта.
+ * Насколько выше линии ушей находится макушка, в долях межушного расстояния.
+ * С этой точкой совмещается линия посадки спрайта, она же центр зоны ловли.
+ *
+ * Значение выведено из пропорций головы: ширина головы примерно 1.35
+ * межушного расстояния, высота — примерно 1.3 ширины, а уши сидят примерно
+ * на 42% высоты от макушки. Прежние 0.5 ставили точку заметно ниже настоящей
+ * макушки, из-за чего шляпы съезжали на глаза.
  */
-const WORN_HAT_LIFT_FRAC = 0.5;
+const WORN_HAT_LIFT_FRAC = 0.72;
 /** Порог видимости точек головы — ниже него голову не отслеживаем. */
 const HEAD_MIN_VISIBILITY = 0.28;
 
