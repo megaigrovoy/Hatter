@@ -460,6 +460,14 @@ canvas {
   box-shadow: 0 0 16px var(--poster-amber-glow);
 }
 
+/* Терракота черепицы с заставки — третий цвет рядом с небом и янтарём. */
+#opt-lang-el:checked + span {
+  border-color: rgba(214, 128, 104, 0.8);
+  background: linear-gradient(125deg, rgba(214, 128, 104, 0.28) 0%, rgba(214, 128, 104, 0.08) 100%);
+  color: #fff;
+  box-shadow: 0 0 16px rgba(214, 128, 104, 0.32);
+}
+
 .menu-lang-pill input:focus-visible + span {
   outline: 2px solid var(--poster-sky);
   outline-offset: 2px;

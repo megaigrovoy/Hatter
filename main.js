@@ -42,7 +42,7 @@ const POSE_MODEL_URLS = {
 /** 0…1 — громкость эффектов и музыки (ползунки) */
 let sfxVolume01 = 1;
 let musicVolume01 = 1;
-/** 'ru' | 'en' */
+/** 'ru' | 'en' | 'el' */
 let uiLang = 'ru';
 
 function loadPlayerCountPreference() {
@@ -78,6 +78,7 @@ const I18N_STRINGS = {
         tutMiss: 'Заденешь краем — шляпа собьётся и упадёт',
         levelLabel: 'Уровень',
         streakLabel: 'Серия',
+        scoreLabel: 'Счёт',
         perkShield: 'Шлем спас!',
         perkStreak: 'Серия цела!',
         quotaLabel: 'Поймать',
@@ -120,6 +121,7 @@ const I18N_STRINGS = {
         tutMiss: 'Clip it with the edge and it is knocked away',
         levelLabel: 'Level',
         streakLabel: 'Streak',
+        scoreLabel: 'Score',
         perkShield: 'Helmet saved you!',
         perkStreak: 'Streak held!',
         quotaLabel: 'Catch',
@@ -137,8 +139,56 @@ const I18N_STRINGS = {
         errHintNotFound: 'No camera found. Check it is plugged in and not in use by another app.',
         errHintAbort:
             'The camera did not start in time. Turn off device emulation in DevTools, close other apps using the camera, and reload.'
+    },
+    el: {
+        playerLabel: 'Παίκτες στην κάμερα',
+        cornerLangTitle: 'Γλώσσα',
+        cornerPlayersTitle: 'Παίκτες',
+        btnStart: 'Παίξε',
+        optionsTitle: 'Ήχος και μουσική',
+        volSfx: 'Ένταση εφέ',
+        volMusic: 'Ένταση μουσικής',
+        btnBackMenu: 'Μενού',
+        fullscreen: 'Πλήρης οθόνη',
+        fullscreenExit: 'Έξοδος',
+        galleryLink: 'Όλα τα παιχνίδια',
+        victory: 'Το επίπεδο ολοκληρώθηκε!',
+        youWon: 'Κέρδισες!',
+        leaderboardTitle: 'Κορυφαίοι 10 σε αυτή τη συσκευή',
+        campaignScore: 'Τελικό σκορ',
+        leaderboardRank: 'Θέση στην κατάταξη',
+        leaderboardNewRecord: 'Νέο ρεκόρ!',
+        leaderboardNoTop: 'Εκτός πρώτης δεκάδας',
+        leaderboardEmpty: 'Δεν υπάρχουν ακόμα σκορ',
+        tutCatch: 'Πιάσε το καπέλο με το κέντρο του κεφαλιού',
+        tutMiss: 'Αν το ακουμπήσεις με την άκρη, θα πέσει',
+        levelLabel: 'Επίπεδο',
+        streakLabel: 'Σερί',
+        scoreLabel: 'Σκορ',
+        perkShield: 'Το κράνος σε έσωσε!',
+        perkStreak: 'Το σερί σώθηκε!',
+        quotaLabel: 'Πιάσε',
+        loadingModels: 'Φόρτωση μοντέλων…',
+        players1ok: 'Λειτουργία: 1 παίκτης',
+        players1wait: 'Λειτουργία: 1 παίκτης · μπες στο κάδρο',
+        players2ok: 'Λειτουργία: 2 παίκτες · κοινό σκορ',
+        players2wait1: 'Λειτουργία: 2 παίκτες · φώναξε τον δεύτερο παίκτη',
+        players2wait0: 'Λειτουργία: 2 παίκτες · μπείτε στο κάδρο',
+        errTitle: 'Δεν ήταν δυνατή η εκκίνηση του παιχνιδιού.',
+        errHintDefault:
+            'Άνοιξε την κονσόλα του προγράμματος περιήγησης (F12 → Console) και στείλε το κείμενο του σφάλματος, αν χρειάζεσαι βοήθεια.',
+        errHintPermission:
+            'Το πρόγραμμα περιήγησης μπλόκαρε την κάμερα για αυτόν τον ιστότοπο. Πάτησε το εικονίδιο της κλειδαριάς δίπλα στη διεύθυνση → επίτρεψε την κάμερα και ανανέωσε τη σελίδα.',
+        errHintNotFound: 'Δεν βρέθηκε κάμερα. Έλεγξε ότι είναι συνδεδεμένη και ότι δεν τη χρησιμοποιεί άλλη εφαρμογή.',
+        errHintAbort:
+            'Η κάμερα δεν ξεκίνησε εγκαίρως. Απενεργοποίησε την εξομοίωση συσκευής στα DevTools, κλείσε άλλες εφαρμογές που χρησιμοποιούν την κάμερα και ανανέωσε τη σελίδα.'
     }
 };
+
+/** Поддерживаемые языки интерфейса, в порядке кнопок в меню. */
+const UI_LANGS = ['ru', 'en', 'el'];
+/** Локаль для дат в таблице рекордов. */
+const DATE_LOCALES = { ru: 'ru-RU', en: 'en-US', el: 'el-GR' };
 
 function t(key) {
     const pack = I18N_STRINGS[uiLang] || I18N_STRINGS.ru;
@@ -147,7 +197,7 @@ function t(key) {
 }
 
 function formatScore(n) {
-    return uiLang === 'ru' ? `Счёт: ${n}` : `Score: ${n}`;
+    return `${t('scoreLabel')}: ${n}`;
 }
 
 function formatLevel(n = currentLevel) {
@@ -175,13 +225,15 @@ function updateQuotaDisplay() {
 
 function loadLangPreference() {
     const raw = localStorage.getItem(STORAGE_LANG);
-    if (raw === 'en' || raw === 'ru') return raw;
-    if (typeof navigator !== 'undefined' && navigator.language && /^en/i.test(navigator.language)) return 'en';
+    if (UI_LANGS.includes(raw)) return raw;
+    const nav = typeof navigator !== 'undefined' ? navigator.language || '' : '';
+    if (/^el/i.test(nav)) return 'el';
+    if (/^en/i.test(nav)) return 'en';
     return 'ru';
 }
 
 function applyI18n() {
-    document.documentElement.lang = uiLang === 'en' ? 'en' : 'ru';
+    document.documentElement.lang = uiLang;
     for (const el of document.querySelectorAll('[data-i18n]')) {
         const key = el.getAttribute('data-i18n');
         if (key) el.textContent = t(key);
@@ -221,11 +273,9 @@ function loadPersistedSettings() {
     if (volSfxVal) volSfxVal.textContent = `${Math.round(sfxVolume01 * 100)}%`;
     if (volMusicVal) volMusicVal.textContent = `${Math.round(musicVolume01 * 100)}%`;
 
-    const optRu = document.getElementById('opt-lang-ru');
-    const optEn = document.getElementById('opt-lang-en');
-    if (optRu && optEn) {
-        optRu.checked = uiLang === 'ru';
-        optEn.checked = uiLang === 'en';
+    for (const lang of UI_LANGS) {
+        const opt = document.getElementById(`opt-lang-${lang}`);
+        if (opt) opt.checked = uiLang === lang;
     }
     applyI18n();
     applyMusicOutputVolumes();
@@ -2123,7 +2173,7 @@ function loadLeaderboard() {
 
 function formatLeaderboardDate(ts) {
     try {
-        return new Date(ts).toLocaleDateString(uiLang === 'en' ? 'en-US' : 'ru-RU', {
+        return new Date(ts).toLocaleDateString(DATE_LOCALES[uiLang] ?? 'ru-RU', {
             day: '2-digit',
             month: '2-digit',
             year: '2-digit'
@@ -2450,10 +2500,10 @@ volMusicEl?.addEventListener('input', () => {
     if (musicVolume01 <= 0) stopMusic();
 });
 
-for (const id of ['opt-lang-ru', 'opt-lang-en']) {
-    document.getElementById(id)?.addEventListener('change', (ev) => {
+for (const lang of UI_LANGS) {
+    document.getElementById(`opt-lang-${lang}`)?.addEventListener('change', (ev) => {
         if (!ev.target.checked) return;
-        uiLang = ev.target.value === 'en' ? 'en' : 'ru';
+        uiLang = UI_LANGS.includes(ev.target.value) ? ev.target.value : 'ru';
         try {
             localStorage.setItem(STORAGE_LANG, uiLang);
         } catch (_) {}
