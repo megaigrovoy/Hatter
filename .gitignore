@@ -4,3 +4,7 @@ public/mediapipe-wasm
 .DS_Store
 *.local
 .vite
+
+# Секреты и локальные ключи — никогда не коммитить
+.env
+.env.*
