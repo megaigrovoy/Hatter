@@ -23,7 +23,20 @@ function isAndroidBrowser() {
 const trackTuning = {
     /** На Android сначала CPU; на ПК/iPad — GPU (быстрее и стабилен). */
     preferCpuPose: isAndroidBrowser(),
-    minPoseConfidence: isAndroidBrowser() ? 0.3 : 0.5
+    // 0.5 отсекал далёких игроков и детей в полный рост: фигура мелкая, и
+    // уверенность модели в ней ниже. 0.4 ловит их, не хватая мебель за людей.
+    minPoseConfidence: isAndroidBrowser() ? 0.3 : 0.4,
+    /**
+     * Модели по порядку попыток. Полная заметно лучше находит маленькие фигуры
+     * на дальней дистанции, но тяжелее — на Android её не грузим. Если полная
+     * не загрузилась, откатываемся на облегчённую.
+     */
+    poseModels: isAndroidBrowser() ? ['lite'] : ['full', 'lite']
+};
+
+const POSE_MODEL_URLS = {
+    lite: 'https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_lite/float16/latest/pose_landmarker_lite.task',
+    full: 'https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_full/float16/latest/pose_landmarker_full.task'
 };
 
 /** 0…1 — громкость эффектов и музыки (ползунки) */
@@ -1470,25 +1483,223 @@ function pruneHeadOverlayState(activePoseKeys, nowMs) {
         // Свежую запись оставляем: игрок, скорее всего, вернётся через кадр.
         if (!st || nowMs - (st.lastSeenMs ?? 0) > HEAD_STATE_TTL_MS) {
             headOverlayByPoseKey.delete(k);
+            // Под этим ключом может вернуться уже другой человек: его пропорции
+            // подстроим заново, а не возьмём от предыдущего игрока.
+            headCalibrationByPoseKey.delete(k);
         }
     }
 }
+
+/* ---------------------------------------------------------------------------
+ * Откуда берём голову, когда уши не видны.
+ *
+ * Вся геометрия шляпы строится по линии ушей. Но уши — самые ненадёжные точки
+ * головы: у детей их закрывают волосы и шапки, а когда человек стоит далеко в
+ * полный рост, модель видит их хуже всего остального. Раньше без обоих ушей
+ * голова просто пропадала. Теперь по очереди пробуем:
+ *   1. уши (7, 8) — как раньше;
+ *   2. внешние уголки глаз (3, 6) — их видно почти всегда, когда видно лицо;
+ *   3. плечи (11, 12), а положение — по носу, если он виден.
+ * Из запасных точек строим «виртуальные уши». Пропорции у всех разные (у детей
+ * плечи узкие, а глаза относительно крупнее), поэтому, пока уши видны, мы
+ * подстраиваем коэффициенты под конкретного игрока, и переход на запасной
+ * источник не меняет ни размер, ни положение шляпы скачком.
+ * ------------------------------------------------------------------------- */
+
+/** Начальные коэффициенты: ширина ушей к ширине источника и смещение центра. */
+const HEAD_SOURCE_DEFAULTS = {
+    // Межушное расстояние примерно в 1.55 раза шире внешних уголков глаз,
+    // а центр ушей лежит чуть ниже линии глаз.
+    eyes: { span: 1.55, off: 0.06 },
+    // Межушное расстояние в 2.4 раза уже плеч (у детей ближе к 2.1).
+    // Центр ушей: чуть выше носа, если он виден, иначе заметно выше плеч.
+    shoulders: { span: 1 / 2.4, offNose: -0.12, offShoulders: -1.25 }
+};
+/** Пределы, в которых разрешаем подстраиваться, чтобы один кривой кадр не сломал масштаб. */
+const HEAD_SOURCE_LIMITS = {
+    eyesSpan: [1.2, 2.1],
+    eyesOff: [-0.25, 0.35],
+    shSpan: [1 / 3.4, 1 / 1.6],
+    offNose: [-0.5, 0.25],
+    offShoulders: [-2.0, -0.6]
+};
+/** Скорость подстройки коэффициентов за кадр. */
+const HEAD_SOURCE_LEARN = 0.08;
+
+function lmVisible(p, minVis) {
+    return !!p && (p.visibility ?? 1) >= minVis;
+}
+
+function clampTo(v, [lo, hi]) {
+    return Math.max(lo, Math.min(hi, v));
+}
+
+/**
+ * Сдвигает коэффициент к наблюдению, но только если наблюдение правдоподобно.
+ * Значение за пределами анатомических границ — это сбой модели на кадре, а не
+ * пропорции игрока: такое отбрасываем целиком, иначе один кривой кадр уводил
+ * запасной размер головы на пятую часть.
+ */
+function learnToward(current, observed, limits) {
+    if (!Number.isFinite(observed) || observed < limits[0] || observed > limits[1]) return current;
+    return clampTo(current + (observed - current) * HEAD_SOURCE_LEARN, limits);
+}
+
+/** Единичная нормаль к отрезку A→B, направленная вниз по экрану (к подбородку). */
+function downNormal(A, B) {
+    const dx = B.x - A.x;
+    const dy = B.y - A.y;
+    const len = Math.hypot(dx, dy) || 1;
+    let nx = -dy / len;
+    let ny = dx / len;
+    if (ny < 0) {
+        nx = -nx;
+        ny = -ny;
+    }
+    return { x: nx, y: ny };
+}
+
+/**
+ * Строит пару «ушей» в экранных координатах по лучшему доступному источнику.
+ * Пока видны уши, подстраивает коэффициенты запасных источников под игрока.
+ *
+ * @param {Array} lm landmarks одного человека
+ * @param {(p: object) => {x: number, y: number}} toScreen
+ * @param {object} cal коэффициенты игрока, изменяются на месте
+ * @param {number} minVis порог видимости точки
+ * @returns {{L: object, R: object, source: string} | null}
+ */
+function resolveHeadEars(lm, toScreen, cal, minVis) {
+    const ear7 = lm[7];
+    const ear8 = lm[8];
+    const eye3 = lm[3];
+    const eye6 = lm[6];
+    const sh11 = lm[11];
+    const sh12 = lm[12];
+    const nose = lm[0];
+
+    const earsOk = lmVisible(ear7, minVis) && lmVisible(ear8, minVis);
+    const eyesOk = lmVisible(eye3, minVis) && lmVisible(eye6, minVis);
+    const shOk = lmVisible(sh11, minVis) && lmVisible(sh12, minVis);
+    const noseOk = lmVisible(nose, minVis);
+
+    if (earsOk) {
+        const L = toScreen(ear7);
+        const R = toScreen(ear8);
+        const earSpan = Math.hypot(R.x - L.x, R.y - L.y);
+        const earMid = { x: (L.x + R.x) / 2, y: (L.y + R.y) / 2 };
+        if (earSpan > 1) {
+            if (eyesOk) {
+                const A = toScreen(eye3);
+                const B = toScreen(eye6);
+                const span = Math.hypot(B.x - A.x, B.y - A.y);
+                if (span > 1) {
+                    const n = downNormal(A, B);
+                    const mid = { x: (A.x + B.x) / 2, y: (A.y + B.y) / 2 };
+                    const off = ((earMid.x - mid.x) * n.x + (earMid.y - mid.y) * n.y) / earSpan;
+                    cal.eyes.span = learnToward(cal.eyes.span, earSpan / span, HEAD_SOURCE_LIMITS.eyesSpan);
+                    cal.eyes.off = learnToward(cal.eyes.off, off, HEAD_SOURCE_LIMITS.eyesOff);
+                }
+            }
+            if (shOk) {
+                const A = toScreen(sh11);
+                const B = toScreen(sh12);
+                const span = Math.hypot(B.x - A.x, B.y - A.y);
+                if (span > 1) {
+                    const n = downNormal(A, B);
+                    const shMid = { x: (A.x + B.x) / 2, y: (A.y + B.y) / 2 };
+                    cal.shoulders.span = learnToward(cal.shoulders.span, earSpan / span, HEAD_SOURCE_LIMITS.shSpan);
+                    const offSh = ((earMid.x - shMid.x) * n.x + (earMid.y - shMid.y) * n.y) / earSpan;
+                    cal.shoulders.offShoulders = learnToward(cal.shoulders.offShoulders, offSh, HEAD_SOURCE_LIMITS.offShoulders);
+                    if (noseOk) {
+                        const N = toScreen(nose);
+                        const offN = ((earMid.x - N.x) * n.x + (earMid.y - N.y) * n.y) / earSpan;
+                        cal.shoulders.offNose = learnToward(cal.shoulders.offNose, offN, HEAD_SOURCE_LIMITS.offNose);
+                    }
+                }
+            }
+        }
+        return { L, R, source: 'ears' };
+    }
+
+    /** Виртуальные уши: центр + половина ширины вдоль линии источника A→B. */
+    const build = (A, B, center, earSpan, source) => {
+        const dx = B.x - A.x;
+        const dy = B.y - A.y;
+        const len = Math.hypot(dx, dy) || 1;
+        const ux = dx / len;
+        const uy = dy / len;
+        const h = earSpan / 2;
+        return {
+            L: { x: center.x - ux * h, y: center.y - uy * h },
+            R: { x: center.x + ux * h, y: center.y + uy * h },
+            source
+        };
+    };
+
+    if (eyesOk) {
+        const A = toScreen(eye3);
+        const B = toScreen(eye6);
+        const span = Math.hypot(B.x - A.x, B.y - A.y);
+        if (span > 1) {
+            const earSpan = span * cal.eyes.span;
+            const n = downNormal(A, B);
+            const mid = { x: (A.x + B.x) / 2, y: (A.y + B.y) / 2 };
+            const c = { x: mid.x + n.x * cal.eyes.off * earSpan, y: mid.y + n.y * cal.eyes.off * earSpan };
+            return build(A, B, c, earSpan, 'eyes');
+        }
+    }
+
+    if (shOk) {
+        const A = toScreen(sh11);
+        const B = toScreen(sh12);
+        const span = Math.hypot(B.x - A.x, B.y - A.y);
+        if (span > 1) {
+            const earSpan = span * cal.shoulders.span;
+            const n = downNormal(A, B);
+            let c;
+            if (noseOk) {
+                const N = toScreen(nose);
+                const o = cal.shoulders.offNose * earSpan;
+                c = { x: N.x + n.x * o, y: N.y + n.y * o };
+            } else {
+                const mid = { x: (A.x + B.x) / 2, y: (A.y + B.y) / 2 };
+                const o = cal.shoulders.offShoulders * earSpan;
+                c = { x: mid.x + n.x * o, y: mid.y + n.y * o };
+            }
+            return build(A, B, c, earSpan, noseOk ? 'shoulders+nose' : 'shoulders');
+        }
+    }
+
+    return null;
+}
+
+function newHeadCalibration() {
+    return {
+        eyes: { ...HEAD_SOURCE_DEFAULTS.eyes },
+        shoulders: { ...HEAD_SOURCE_DEFAULTS.shoulders }
+    };
+}
+
+/** poseKey -> коэффициенты запасных источников головы, подстроенные под игрока. */
+const headCalibrationByPoseKey = new Map();
 
 /**
  * Обновляет сглаженную геометрию головы игрока.
  * @returns {boolean} true — голова видна и пригодна для ловли/отрисовки.
  */
 function tickHeadOverlayFromLm(poseKey, lm, getScreenPoint, nowMs = performance.now()) {
-    const nose = lm[0];
-    const earL = lm[7];
-    const earR = lm[8];
-    if (!nose || !earL || !earR) return false;
-    const vis = Math.min(nose.visibility ?? 1, earL.visibility ?? 1, earR.visibility ?? 1);
-    if (vis < HEAD_MIN_VISIBILITY) return false;
+    let cal = headCalibrationByPoseKey.get(poseKey);
+    if (!cal) {
+        cal = newHeadCalibration();
+        headCalibrationByPoseKey.set(poseKey, cal);
+    }
+    const ears = resolveHeadEars(lm, getScreenPoint, cal, HEAD_MIN_VISIBILITY);
+    if (!ears) return false;
 
-    const L = getScreenPoint(earL);
-    const R = getScreenPoint(earR);
-    const n = getScreenPoint(nose);
+    const L = ears.L;
+    const R = ears.R;
+    const n = lm[0] ? getScreenPoint(lm[0]) : { x: (L.x + R.x) / 2, y: (L.y + R.y) / 2 };
     const a = HEAD_SMOOTH_ALPHA;
     let st = headOverlayByPoseKey.get(poseKey);
     if (!st) {
@@ -1504,9 +1715,13 @@ function tickHeadOverlayFromLm(poseKey, lm, getScreenPoint, nowMs = performance.
     }
 
     const earSpan = Math.hypot(st.rx - st.lx, st.ry - st.ly);
-    if (earSpan < 8) return false;
+    // Порог в пикселях буфера: голова ребёнка в полный рост у дальней стены
+    // даёт межушное расстояние порядка 15–25 px, прежние 8 px не мешали,
+    // но опускаем с запасом до 5 — меньше уже действительно шум.
+    if (earSpan < 5) return false;
 
     st.earSpan = earSpan;
+    st.source = ears.source;
     st.lastSeenMs = nowMs;
     st.cx = (st.lx + st.rx) * 0.5;
     st.cy = (st.ly + st.ry) * 0.5;
@@ -2070,6 +2285,7 @@ function resetRuntimeState() {
     floaters.length = 0;
     wornHatByPoseKey.clear();
     headOverlayByPoseKey.clear();
+    headCalibrationByPoseKey.clear();
     poseSmoothByKey.clear();
     stablePoseShoulderMid = [];
     lastVideoTime = -1;
@@ -2291,10 +2507,9 @@ async function createPoseLandmarkerInstance() {
     }
     const np = playerModeCount === 1 ? 1 : 2;
     const conf = trackTuning.minPoseConfidence;
-    const poseOpts = (delegate) => ({
+    const poseOpts = (delegate, model) => ({
         baseOptions: {
-            modelAssetPath:
-                'https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_lite/float16/latest/pose_landmarker_lite.task',
+            modelAssetPath: POSE_MODEL_URLS[model],
             delegate
         },
         runningMode: 'VIDEO',
@@ -2306,17 +2521,19 @@ async function createPoseLandmarkerInstance() {
 
     const delegateOrder = trackTuning.preferCpuPose ? ['CPU', 'GPU'] : ['GPU', 'CPU'];
     let lastErr;
-    for (const delegate of delegateOrder) {
-        try {
-            poseLandmarker = await PoseLandmarker.createFromOptions(vision, poseOpts(delegate));
-            mediapipePoseDelegate = delegate;
-            console.info(
-                `[Hatter] pose delegate: ${mediapipePoseDelegate}, numPoses=${np}, androidCpuFirst=${trackTuning.preferCpuPose}`
-            );
-            return;
-        } catch (e) {
-            lastErr = e;
-            console.warn(`PoseLandmarker ${delegate} failed:`, e);
+    for (const model of trackTuning.poseModels) {
+        for (const delegate of delegateOrder) {
+            try {
+                poseLandmarker = await PoseLandmarker.createFromOptions(vision, poseOpts(delegate, model));
+                mediapipePoseDelegate = delegate;
+                console.info(
+                    `[Hatter] pose model: ${model}, delegate: ${mediapipePoseDelegate}, numPoses=${np}, androidCpuFirst=${trackTuning.preferCpuPose}`
+                );
+                return;
+            } catch (e) {
+                lastErr = e;
+                console.warn(`PoseLandmarker ${model}/${delegate} failed:`, e);
+            }
         }
     }
     throw lastErr ?? new Error('PoseLandmarker init failed');
