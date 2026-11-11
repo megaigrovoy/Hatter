@@ -1,4 +1,5 @@
 import { FilesetResolver, PoseLandmarker } from '@mediapipe/tasks-vision';
+import { HeadTracker } from './src/tracking/head-tracker.js';
 
 const MEDIAPIPE_TASKS_VISION_WASM_VER = '0.10.34';
 
@@ -23,13 +24,15 @@ function isAndroidBrowser() {
 const trackTuning = {
     /** На Android сначала CPU; на ПК/iPad — GPU (быстрее и стабилен). */
     preferCpuPose: isAndroidBrowser(),
-    // 0.5 отсекал далёких игроков и детей в полный рост: фигура мелкая, и
-    // уверенность модели в ней ниже. 0.4 ловит их, не хватая мебель за людей.
-    minPoseConfidence: isAndroidBrowser() ? 0.3 : 0.4,
+    // Порог уверенности модели. Низкий порог нужен, чтобы слежение не бросало
+    // далёкого игрока и голову под непривычным углом; ложные срабатывания
+    // отсеивает сам трекер проверкой «похоже ли на человека».
+    minPoseConfidence: 0.3,
     /**
-     * Модели по порядку попыток. Полная заметно лучше находит маленькие фигуры
-     * на дальней дистанции, но тяжелее — на Android её не грузим. Если полная
-     * не загрузилась, откатываемся на облегчённую.
+     * Модели слежения по порядку попыток. Полная точнее ставит точки лица, но
+     * тяжелее — на Android её не грузим. Дальность от модели НЕ зависит:
+     * детектор у всех вариантов общий, дальность даёт увеличенный вырез кадра
+     * (см. src/tracking/head-tracker.js).
      */
     poseModels: isAndroidBrowser() ? ['lite'] : ['full', 'lite']
 };
@@ -514,19 +517,10 @@ const btnBackMenu = document.getElementById('btn-back-menu');
 const btnStart = document.getElementById('btn-start');
 const playersDisplay = document.getElementById('players-display');
 
-let poseLandmarker;
+/** Трекер голов: слежение по увеличенным вырезам кадра + поиск потерянных игроков. */
+let headTracker = null;
 let visionTasksResolver = null;
-let mediapipePoseDelegate = 'CPU';
 let lastVideoTime = -1;
-let poseDetectTsMs = 0;
-
-const cachedSmoothedLmByPoseKey = new Map();
-const posePrevTargetLmByPoseKey = new Map();
-const poseTargetLmByPoseKey = new Map();
-const poseDisplayLmByPoseKey = new Map();
-let poseFrameStartMs = 0;
-let poseFrameIntervalMs = 33.33;
-let prevVideoTimeForInterval = -1;
 
 let score = 0;
 let currentLevel = 1;
@@ -1230,263 +1224,6 @@ function spawnMissBurst(x, y, color) {
 }
 
 /* ---------------------------------------------------------------------------
- * Игроки: порядок, стабильные ключи, сглаживание позы
- * ------------------------------------------------------------------------- */
-
-function getOrderedPersons(poseResults) {
-    const persons = poseResults?.landmarks;
-    if (!persons?.length) return [];
-    return persons
-        .map((lm, idx) => {
-            const ls = lm[11];
-            const rs = lm[12];
-            const xs = [];
-            if (ls) xs.push(ls.x);
-            if (rs) xs.push(rs.x);
-            return { lm, idx, sortX: xs.length ? xs.reduce((a, b) => a + b, 0) / xs.length : idx };
-        })
-        .sort((a, b) => a.sortX - b.sortX)
-        .map((p, i) => ({ lm: p.lm, key: `Pose#${i}` }));
-}
-
-/** Центр плеч в экранных координатах — не даём Pose#0/#1 перепрыгивать между людьми. */
-let stablePoseShoulderMid = [];
-
-function otherPoseKey(k) {
-    return k === 'Pose#0' ? 'Pose#1' : 'Pose#0';
-}
-
-function shoulderMidScreen(lm, getScreenPoint) {
-    const ls = lm[11];
-    const rs = lm[12];
-    if (!ls || !rs) return null;
-    const a = getScreenPoint(ls);
-    const b = getScreenPoint(rs);
-    return { x: (a.x + b.x) * 0.5, y: (a.y + b.y) * 0.5 };
-}
-
-/**
- * Сохраняет poseKey за слотом по близости центра плеч к прошлому кадру.
- * Надетая шляпа должна оставаться на том же игроке, даже если он на миг пропал.
- */
-function bindStablePoseKeys(sortedPersons, getScreenPoint) {
-    const items = [];
-    for (const { lm } of sortedPersons) {
-        const mid = shoulderMidScreen(lm, getScreenPoint);
-        if (!mid) continue;
-        items.push({ lm, mid });
-    }
-    if (items.length === 0) return [];
-
-    if (items.length >= 3) {
-        stablePoseShoulderMid = items.map((it, i) => ({ key: `Pose#${i}`, x: it.mid.x, y: it.mid.y }));
-        return items.map((it, i) => ({ lm: it.lm, key: `Pose#${i}` }));
-    }
-
-    if (items.length === 1) {
-        if (stablePoseShoulderMid.length >= 2) {
-            let bestSlot = stablePoseShoulderMid[0];
-            let bestD = Infinity;
-            for (const s of stablePoseShoulderMid) {
-                const d = Math.hypot(items[0].mid.x - s.x, items[0].mid.y - s.y);
-                if (d < bestD) {
-                    bestD = d;
-                    bestSlot = s;
-                }
-            }
-            bestSlot.x = items[0].mid.x;
-            bestSlot.y = items[0].mid.y;
-            return [{ lm: items[0].lm, key: bestSlot.key }];
-        }
-        if (stablePoseShoulderMid.length === 1) {
-            stablePoseShoulderMid[0].x = items[0].mid.x;
-            stablePoseShoulderMid[0].y = items[0].mid.y;
-            return [{ lm: items[0].lm, key: stablePoseShoulderMid[0].key }];
-        }
-        stablePoseShoulderMid = [{ key: 'Pose#0', x: items[0].mid.x, y: items[0].mid.y }];
-        return [{ lm: items[0].lm, key: 'Pose#0' }];
-    }
-
-    const t0 = items[0];
-    const t1 = items[1];
-
-    if (stablePoseShoulderMid.length === 1) {
-        const old = stablePoseShoulderMid[0];
-        const d0 = Math.hypot(t0.mid.x - old.x, t0.mid.y - old.y);
-        const d1 = Math.hypot(t1.mid.x - old.x, t1.mid.y - old.y);
-        if (d0 <= d1) {
-            stablePoseShoulderMid = [
-                { key: old.key, x: t0.mid.x, y: t0.mid.y },
-                { key: otherPoseKey(old.key), x: t1.mid.x, y: t1.mid.y }
-            ];
-            return [
-                { lm: t0.lm, key: old.key },
-                { lm: t1.lm, key: otherPoseKey(old.key) }
-            ];
-        }
-        stablePoseShoulderMid = [
-            { key: otherPoseKey(old.key), x: t0.mid.x, y: t0.mid.y },
-            { key: old.key, x: t1.mid.x, y: t1.mid.y }
-        ];
-        return [
-            { lm: t0.lm, key: otherPoseKey(old.key) },
-            { lm: t1.lm, key: old.key }
-        ];
-    }
-
-    if (stablePoseShoulderMid.length !== 2) {
-        stablePoseShoulderMid = [
-            { key: 'Pose#0', x: t0.mid.x, y: t0.mid.y },
-            { key: 'Pose#1', x: t1.mid.x, y: t1.mid.y }
-        ];
-        return [
-            { lm: t0.lm, key: 'Pose#0' },
-            { lm: t1.lm, key: 'Pose#1' }
-        ];
-    }
-
-    const s0 = stablePoseShoulderMid[0];
-    const s1 = stablePoseShoulderMid[1];
-    const d00 = Math.hypot(t0.mid.x - s0.x, t0.mid.y - s0.y);
-    const d10 = Math.hypot(t1.mid.x - s0.x, t1.mid.y - s0.y);
-    const d01 = Math.hypot(t0.mid.x - s1.x, t0.mid.y - s1.y);
-    const d11 = Math.hypot(t1.mid.x - s1.x, t1.mid.y - s1.y);
-    let itemForS0 = 0;
-    let itemForS1 = 1;
-    if (d01 + d10 + 12 < d00 + d11) {
-        itemForS0 = 1;
-        itemForS1 = 0;
-    }
-    const mS0 = items[itemForS0];
-    const mS1 = items[itemForS1];
-    s0.x = mS0.mid.x;
-    s0.y = mS0.mid.y;
-    s1.x = mS1.mid.x;
-    s1.y = mS1.mid.y;
-    return [
-        { lm: mS0.lm, key: s0.key },
-        { lm: mS1.lm, key: s1.key }
-    ];
-}
-
-const FACE_LM_INDICES = new Set([0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10]);
-const POSE_FACE_ALPHA = 0.3;
-const POSE_BODY_ALPHA = 0.42;
-const POSE_TELEPORT_THRESHOLD = 0.22;
-const POSE_STATE_TTL_MS = 600;
-const poseSmoothByKey = new Map();
-
-function smoothPoseLandmarks(personKey, rawLm, nowMs) {
-    let state = poseSmoothByKey.get(personKey);
-    if (!state) {
-        state = { lm: {}, lastSeenMs: nowMs };
-        poseSmoothByKey.set(personKey, state);
-    }
-    state.lastSeenMs = nowMs;
-    const out = new Array(rawLm.length);
-    for (let i = 0; i < rawLm.length; i++) {
-        const r = rawLm[i];
-        if (!r) {
-            out[i] = r;
-            continue;
-        }
-        const prev = state.lm[i];
-        const alpha = FACE_LM_INDICES.has(i) ? POSE_FACE_ALPHA : POSE_BODY_ALPHA;
-        if (!prev || Math.hypot(r.x - prev.x, r.y - prev.y) > POSE_TELEPORT_THRESHOLD) {
-            state.lm[i] = { x: r.x, y: r.y, z: r.z, visibility: r.visibility };
-        } else {
-            state.lm[i] = {
-                x: prev.x * (1 - alpha) + r.x * alpha,
-                y: prev.y * (1 - alpha) + r.y * alpha,
-                z: (prev.z ?? 0) * (1 - alpha) + (r.z ?? 0) * alpha,
-                visibility: r.visibility
-            };
-        }
-        out[i] = state.lm[i];
-    }
-    return out;
-}
-
-function prunePoseSmoothState(activeKeys, nowMs) {
-    for (const k of [...poseSmoothByKey.keys()]) {
-        if (activeKeys.has(k)) continue;
-        const s = poseSmoothByKey.get(k);
-        if (!s || nowMs - s.lastSeenMs > POSE_STATE_TTL_MS) poseSmoothByKey.delete(k);
-    }
-}
-
-function cloneLandmarksArray(lm) {
-    return lm.map((p) => (p ? { x: p.x, y: p.y, z: p.z, visibility: p.visibility } : p));
-}
-
-function lerpLandmarksInto(fromLm, toLm, t, outLm) {
-    const n = toLm.length;
-    for (let i = 0; i < n; i++) {
-        const a = fromLm[i];
-        const b = toLm[i];
-        if (!b) {
-            outLm[i] = b;
-            continue;
-        }
-        if (!a) {
-            outLm[i] = { x: b.x, y: b.y, z: b.z, visibility: b.visibility };
-            continue;
-        }
-        outLm[i] = {
-            x: a.x + (b.x - a.x) * t,
-            y: a.y + (b.y - a.y) * t,
-            z: (a.z ?? 0) + ((b.z ?? 0) - (a.z ?? 0)) * t,
-            visibility: b.visibility
-        };
-    }
-}
-
-function prunePoseDisplayState(activeKeys) {
-    for (const k of [...poseTargetLmByPoseKey.keys()]) {
-        if (activeKeys.has(k)) continue;
-        poseTargetLmByPoseKey.delete(k);
-        posePrevTargetLmByPoseKey.delete(k);
-        poseDisplayLmByPoseKey.delete(k);
-    }
-}
-
-/** Между кадрами камеры плавно интерполируем prev в target (экран 120 Гц, камера ~30 fps). */
-function updatePoseDisplayLandmarks(activeKeys, nowMs) {
-    const interval = Math.max(16, poseFrameIntervalMs);
-    let t = (nowMs - poseFrameStartMs) / interval;
-    if (t < 0) t = 0;
-    else if (t > 1) t = 1;
-    t = t * t * (3 - 2 * t);
-
-    for (const key of activeKeys) {
-        const target = poseTargetLmByPoseKey.get(key);
-        if (!target) continue;
-        const prev = posePrevTargetLmByPoseKey.get(key);
-        if (!prev || t <= 0) {
-            poseDisplayLmByPoseKey.set(key, cloneLandmarksArray(target));
-            continue;
-        }
-        let out = poseDisplayLmByPoseKey.get(key);
-        if (!out || out.length !== target.length) {
-            out = cloneLandmarksArray(target);
-            poseDisplayLmByPoseKey.set(key, out);
-        }
-        lerpLandmarksInto(prev, target, t, out);
-    }
-}
-
-function commitPoseTargetsFromFrame(orderedPersons, nowMs) {
-    for (const { lm: rawLm, key: poseKey } of orderedPersons) {
-        const smoothed = smoothPoseLandmarks(poseKey, rawLm, nowMs);
-        cachedSmoothedLmByPoseKey.set(poseKey, smoothed);
-        const prevTarget = poseTargetLmByPoseKey.get(poseKey);
-        posePrevTargetLmByPoseKey.set(poseKey, cloneLandmarksArray(prevTarget ?? smoothed));
-        poseTargetLmByPoseKey.set(poseKey, smoothed);
-    }
-    poseFrameStartMs = nowMs;
-}
-
-/* ---------------------------------------------------------------------------
  * Надетая шляпа: держится на голове до тех пор, пока игрок не поймает новую.
  *
  * Голова берётся по ушам (7, 8) и носу (0): линия ушей задаёт угол наклона и
@@ -1498,8 +1235,6 @@ const wornHatByPoseKey = new Map();
 /** poseKey -> сглаженное состояние головы для отрисовки. */
 const headOverlayByPoseKey = new Map();
 
-/** Сглаживание положения ушей/носа (меньше — плавнее, но с задержкой). */
-const HEAD_SMOOTH_ALPHA = isAndroidBrowser() ? 0.38 : 0.2;
 /**
  * Ширина шляпы относительно расстояния между ушами. Уши уже самой головы,
  * поэтому множитель заметно больше единицы: настоящая шляпа шире головы
@@ -1516,278 +1251,61 @@ const WORN_HAT_BRIM_MUL = 2.0;
  * макушки, из-за чего шляпы съезжали на глаза.
  */
 const WORN_HAT_LIFT_FRAC = 0.72;
-/** Порог видимости точек головы — ниже него голову не отслеживаем. */
-const HEAD_MIN_VISIBILITY = 0.28;
+/**
+ * Сколько держим шляпу на экране без новых измерений головы. Короткие провалы
+ * трекер закрывает прогнозом по скорости, а за это время обычно успевает найти
+ * игрока заново — шляпа не мигает.
+ */
+const HEAD_STATE_TTL_MS = 700;
+/**
+ * Ловить шляпу можно только свежей головой: по прогнозу старше этого срока
+ * игрок ловил бы шляпы местом, где его уже нет.
+ */
+const HEAD_CATCH_MAX_STALE_MS = 200;
+/** Межушное расстояние на экране меньше этого — уже шум, а не голова. */
+const HEAD_MIN_EAR_SPAN_PX = 4;
 
 /**
- * Сколько держим геометрию головы после того, как модель перестала её видеть.
- * MediaPipe с двумя людьми в кадре регулярно роняет одного на кадр-другой:
- * без этой задержки надетая шляпа мигала бы на каждом таком пропуске.
+ * Переносит головы из трекера в экранную геометрию для отрисовки и ловли.
+ * Вызывается каждый кадр экрана: трекер сам достраивает движение между кадрами
+ * камеры, поэтому шляпа идёт плавно и на 120 Гц.
+ * @returns {Array<{key: string}>} игроки, чья голова достаточно свежа для ловли
  */
-const HEAD_STATE_TTL_MS = 500;
-
-function pruneHeadOverlayState(activePoseKeys, nowMs) {
+function applyTrackedHeads(getScreenPoint, nowMs) {
+    const catchers = [];
+    const alive = new Set();
+    const heads = headTracker ? headTracker.getHeads(nowMs, HEAD_STATE_TTL_MS) : [];
+    for (const h of heads) {
+        const L = getScreenPoint({ x: h.lx, y: h.ly });
+        const R = getScreenPoint({ x: h.rx, y: h.ry });
+        const dx = R.x - L.x;
+        const dy = R.y - L.y;
+        const earSpan = Math.hypot(dx, dy);
+        if (earSpan < HEAD_MIN_EAR_SPAN_PX) continue;
+        let st = headOverlayByPoseKey.get(h.key);
+        if (!st) {
+            st = {};
+            headOverlayByPoseKey.set(h.key, st);
+        }
+        st.lx = L.x;
+        st.ly = L.y;
+        st.rx = R.x;
+        st.ry = R.y;
+        st.earSpan = earSpan;
+        st.cx = (L.x + R.x) * 0.5;
+        st.cy = (L.y + R.y) * 0.5;
+        // Трекер отдаёт линию ушей слева направо, угол в пределах ±90° описывает
+        // только наклон головы — шляпа не переворачивается.
+        st.angle = Math.atan2(dy, dx);
+        st.source = h.source;
+        st.staleMs = h.staleMs;
+        alive.add(h.key);
+        if (h.staleMs <= HEAD_CATCH_MAX_STALE_MS) catchers.push({ key: h.key });
+    }
     for (const k of [...headOverlayByPoseKey.keys()]) {
-        if (activePoseKeys.has(k)) continue;
-        const st = headOverlayByPoseKey.get(k);
-        // Свежую запись оставляем: игрок, скорее всего, вернётся через кадр.
-        if (!st || nowMs - (st.lastSeenMs ?? 0) > HEAD_STATE_TTL_MS) {
-            headOverlayByPoseKey.delete(k);
-            // Под этим ключом может вернуться уже другой человек: его пропорции
-            // подстроим заново, а не возьмём от предыдущего игрока.
-            headCalibrationByPoseKey.delete(k);
-        }
+        if (!alive.has(k)) headOverlayByPoseKey.delete(k);
     }
-}
-
-/* ---------------------------------------------------------------------------
- * Откуда берём голову, когда уши не видны.
- *
- * Вся геометрия шляпы строится по линии ушей. Но уши — самые ненадёжные точки
- * головы: у детей их закрывают волосы и шапки, а когда человек стоит далеко в
- * полный рост, модель видит их хуже всего остального. Раньше без обоих ушей
- * голова просто пропадала. Теперь по очереди пробуем:
- *   1. уши (7, 8) — как раньше;
- *   2. внешние уголки глаз (3, 6) — их видно почти всегда, когда видно лицо;
- *   3. плечи (11, 12), а положение — по носу, если он виден.
- * Из запасных точек строим «виртуальные уши». Пропорции у всех разные (у детей
- * плечи узкие, а глаза относительно крупнее), поэтому, пока уши видны, мы
- * подстраиваем коэффициенты под конкретного игрока, и переход на запасной
- * источник не меняет ни размер, ни положение шляпы скачком.
- * ------------------------------------------------------------------------- */
-
-/** Начальные коэффициенты: ширина ушей к ширине источника и смещение центра. */
-const HEAD_SOURCE_DEFAULTS = {
-    // Межушное расстояние примерно в 1.55 раза шире внешних уголков глаз,
-    // а центр ушей лежит чуть ниже линии глаз.
-    eyes: { span: 1.55, off: 0.06 },
-    // Межушное расстояние в 2.4 раза уже плеч (у детей ближе к 2.1).
-    // Центр ушей: чуть выше носа, если он виден, иначе заметно выше плеч.
-    shoulders: { span: 1 / 2.4, offNose: -0.12, offShoulders: -1.25 }
-};
-/** Пределы, в которых разрешаем подстраиваться, чтобы один кривой кадр не сломал масштаб. */
-const HEAD_SOURCE_LIMITS = {
-    eyesSpan: [1.2, 2.1],
-    eyesOff: [-0.25, 0.35],
-    shSpan: [1 / 3.4, 1 / 1.6],
-    offNose: [-0.5, 0.25],
-    offShoulders: [-2.0, -0.6]
-};
-/** Скорость подстройки коэффициентов за кадр. */
-const HEAD_SOURCE_LEARN = 0.08;
-
-function lmVisible(p, minVis) {
-    return !!p && (p.visibility ?? 1) >= minVis;
-}
-
-function clampTo(v, [lo, hi]) {
-    return Math.max(lo, Math.min(hi, v));
-}
-
-/**
- * Сдвигает коэффициент к наблюдению, но только если наблюдение правдоподобно.
- * Значение за пределами анатомических границ — это сбой модели на кадре, а не
- * пропорции игрока: такое отбрасываем целиком, иначе один кривой кадр уводил
- * запасной размер головы на пятую часть.
- */
-function learnToward(current, observed, limits) {
-    if (!Number.isFinite(observed) || observed < limits[0] || observed > limits[1]) return current;
-    return clampTo(current + (observed - current) * HEAD_SOURCE_LEARN, limits);
-}
-
-/** Единичная нормаль к отрезку A→B, направленная вниз по экрану (к подбородку). */
-function downNormal(A, B) {
-    const dx = B.x - A.x;
-    const dy = B.y - A.y;
-    const len = Math.hypot(dx, dy) || 1;
-    let nx = -dy / len;
-    let ny = dx / len;
-    if (ny < 0) {
-        nx = -nx;
-        ny = -ny;
-    }
-    return { x: nx, y: ny };
-}
-
-/**
- * Строит пару «ушей» в экранных координатах по лучшему доступному источнику.
- * Пока видны уши, подстраивает коэффициенты запасных источников под игрока.
- *
- * @param {Array} lm landmarks одного человека
- * @param {(p: object) => {x: number, y: number}} toScreen
- * @param {object} cal коэффициенты игрока, изменяются на месте
- * @param {number} minVis порог видимости точки
- * @returns {{L: object, R: object, source: string} | null}
- */
-function resolveHeadEars(lm, toScreen, cal, minVis) {
-    const ear7 = lm[7];
-    const ear8 = lm[8];
-    const eye3 = lm[3];
-    const eye6 = lm[6];
-    const sh11 = lm[11];
-    const sh12 = lm[12];
-    const nose = lm[0];
-
-    const earsOk = lmVisible(ear7, minVis) && lmVisible(ear8, minVis);
-    const eyesOk = lmVisible(eye3, minVis) && lmVisible(eye6, minVis);
-    const shOk = lmVisible(sh11, minVis) && lmVisible(sh12, minVis);
-    const noseOk = lmVisible(nose, minVis);
-
-    if (earsOk) {
-        const L = toScreen(ear7);
-        const R = toScreen(ear8);
-        const earSpan = Math.hypot(R.x - L.x, R.y - L.y);
-        const earMid = { x: (L.x + R.x) / 2, y: (L.y + R.y) / 2 };
-        if (earSpan > 1) {
-            if (eyesOk) {
-                const A = toScreen(eye3);
-                const B = toScreen(eye6);
-                const span = Math.hypot(B.x - A.x, B.y - A.y);
-                if (span > 1) {
-                    const n = downNormal(A, B);
-                    const mid = { x: (A.x + B.x) / 2, y: (A.y + B.y) / 2 };
-                    const off = ((earMid.x - mid.x) * n.x + (earMid.y - mid.y) * n.y) / earSpan;
-                    cal.eyes.span = learnToward(cal.eyes.span, earSpan / span, HEAD_SOURCE_LIMITS.eyesSpan);
-                    cal.eyes.off = learnToward(cal.eyes.off, off, HEAD_SOURCE_LIMITS.eyesOff);
-                }
-            }
-            if (shOk) {
-                const A = toScreen(sh11);
-                const B = toScreen(sh12);
-                const span = Math.hypot(B.x - A.x, B.y - A.y);
-                if (span > 1) {
-                    const n = downNormal(A, B);
-                    const shMid = { x: (A.x + B.x) / 2, y: (A.y + B.y) / 2 };
-                    cal.shoulders.span = learnToward(cal.shoulders.span, earSpan / span, HEAD_SOURCE_LIMITS.shSpan);
-                    const offSh = ((earMid.x - shMid.x) * n.x + (earMid.y - shMid.y) * n.y) / earSpan;
-                    cal.shoulders.offShoulders = learnToward(cal.shoulders.offShoulders, offSh, HEAD_SOURCE_LIMITS.offShoulders);
-                    if (noseOk) {
-                        const N = toScreen(nose);
-                        const offN = ((earMid.x - N.x) * n.x + (earMid.y - N.y) * n.y) / earSpan;
-                        cal.shoulders.offNose = learnToward(cal.shoulders.offNose, offN, HEAD_SOURCE_LIMITS.offNose);
-                    }
-                }
-            }
-        }
-        return { L, R, source: 'ears' };
-    }
-
-    /** Виртуальные уши: центр + половина ширины вдоль линии источника A→B. */
-    const build = (A, B, center, earSpan, source) => {
-        const dx = B.x - A.x;
-        const dy = B.y - A.y;
-        const len = Math.hypot(dx, dy) || 1;
-        const ux = dx / len;
-        const uy = dy / len;
-        const h = earSpan / 2;
-        return {
-            L: { x: center.x - ux * h, y: center.y - uy * h },
-            R: { x: center.x + ux * h, y: center.y + uy * h },
-            source
-        };
-    };
-
-    if (eyesOk) {
-        const A = toScreen(eye3);
-        const B = toScreen(eye6);
-        const span = Math.hypot(B.x - A.x, B.y - A.y);
-        if (span > 1) {
-            const earSpan = span * cal.eyes.span;
-            const n = downNormal(A, B);
-            const mid = { x: (A.x + B.x) / 2, y: (A.y + B.y) / 2 };
-            const c = { x: mid.x + n.x * cal.eyes.off * earSpan, y: mid.y + n.y * cal.eyes.off * earSpan };
-            return build(A, B, c, earSpan, 'eyes');
-        }
-    }
-
-    if (shOk) {
-        const A = toScreen(sh11);
-        const B = toScreen(sh12);
-        const span = Math.hypot(B.x - A.x, B.y - A.y);
-        if (span > 1) {
-            const earSpan = span * cal.shoulders.span;
-            const n = downNormal(A, B);
-            let c;
-            if (noseOk) {
-                const N = toScreen(nose);
-                const o = cal.shoulders.offNose * earSpan;
-                c = { x: N.x + n.x * o, y: N.y + n.y * o };
-            } else {
-                const mid = { x: (A.x + B.x) / 2, y: (A.y + B.y) / 2 };
-                const o = cal.shoulders.offShoulders * earSpan;
-                c = { x: mid.x + n.x * o, y: mid.y + n.y * o };
-            }
-            return build(A, B, c, earSpan, noseOk ? 'shoulders+nose' : 'shoulders');
-        }
-    }
-
-    return null;
-}
-
-function newHeadCalibration() {
-    return {
-        eyes: { ...HEAD_SOURCE_DEFAULTS.eyes },
-        shoulders: { ...HEAD_SOURCE_DEFAULTS.shoulders }
-    };
-}
-
-/** poseKey -> коэффициенты запасных источников головы, подстроенные под игрока. */
-const headCalibrationByPoseKey = new Map();
-
-/**
- * Обновляет сглаженную геометрию головы игрока.
- * @returns {boolean} true — голова видна и пригодна для ловли/отрисовки.
- */
-function tickHeadOverlayFromLm(poseKey, lm, getScreenPoint, nowMs = performance.now()) {
-    let cal = headCalibrationByPoseKey.get(poseKey);
-    if (!cal) {
-        cal = newHeadCalibration();
-        headCalibrationByPoseKey.set(poseKey, cal);
-    }
-    const ears = resolveHeadEars(lm, getScreenPoint, cal, HEAD_MIN_VISIBILITY);
-    if (!ears) return false;
-
-    const L = ears.L;
-    const R = ears.R;
-    const n = lm[0] ? getScreenPoint(lm[0]) : { x: (L.x + R.x) / 2, y: (L.y + R.y) / 2 };
-    const a = HEAD_SMOOTH_ALPHA;
-    let st = headOverlayByPoseKey.get(poseKey);
-    if (!st) {
-        st = { lx: L.x, ly: L.y, rx: R.x, ry: R.y, nx: n.x, ny: n.y };
-        headOverlayByPoseKey.set(poseKey, st);
-    } else {
-        st.lx = st.lx * (1 - a) + L.x * a;
-        st.ly = st.ly * (1 - a) + L.y * a;
-        st.rx = st.rx * (1 - a) + R.x * a;
-        st.ry = st.ry * (1 - a) + R.y * a;
-        st.nx = st.nx * (1 - a) + n.x * a;
-        st.ny = st.ny * (1 - a) + n.y * a;
-    }
-
-    const earSpan = Math.hypot(st.rx - st.lx, st.ry - st.ly);
-    // Порог в пикселях буфера: голова ребёнка в полный рост у дальней стены
-    // даёт межушное расстояние порядка 15–25 px, прежние 8 px не мешали,
-    // но опускаем с запасом до 5 — меньше уже действительно шум.
-    if (earSpan < 5) return false;
-
-    st.earSpan = earSpan;
-    st.source = ears.source;
-    st.lastSeenMs = nowMs;
-    st.cx = (st.lx + st.rx) * 0.5;
-    st.cy = (st.ly + st.ry) * 0.5;
-
-    // Индекс 7 — анатомически левое ухо, и на кадре фронтальной камеры оно оказывается
-    // СПРАВА. Вектор 7→8 тогда смотрит влево, angle ≈ 180°, и шляпа рисуется вверх
-    // тормашками. Берём линию ушей всегда слева направо по экрану: угол остаётся
-    // в пределах ±90° и описывает только наклон головы.
-    let dx = st.rx - st.lx;
-    let dy = st.ry - st.ly;
-    if (dx < 0) {
-        dx = -dx;
-        dy = -dy;
-    }
-    st.angle = Math.atan2(dy, dx);
-    return true;
+    return catchers;
 }
 
 /**
@@ -2335,20 +1853,8 @@ function resetRuntimeState() {
     floaters.length = 0;
     wornHatByPoseKey.clear();
     headOverlayByPoseKey.clear();
-    headCalibrationByPoseKey.clear();
-    poseSmoothByKey.clear();
-    stablePoseShoulderMid = [];
+    headTracker?.reset();
     lastVideoTime = -1;
-    // poseDetectTsMs НЕ обнуляем: экземпляр PoseLandmarker переживает рестарт игры
-    // и помнит последнюю метку. Сброс в ноль ломал монотонность и глушил трекер.
-    cachedSmoothedLmByPoseKey.clear();
-    posePrevTargetLmByPoseKey.clear();
-    poseTargetLmByPoseKey.clear();
-    poseDisplayLmByPoseKey.clear();
-    poseFrameStartMs = 0;
-    poseFrameIntervalMs = 33.33;
-    prevVideoTimeForInterval = -1;
-    currentPoseResults = null;
     comboStreak = 0;
 }
 
@@ -2555,52 +2061,29 @@ async function createPoseLandmarkerInstance() {
         console.warn('[Hatter] createPoseLandmarkerInstance: vision resolver not ready');
         return;
     }
-    const np = playerModeCount === 1 ? 1 : 2;
-    const conf = trackTuning.minPoseConfidence;
-    const poseOpts = (delegate, model) => ({
-        baseOptions: {
-            modelAssetPath: POSE_MODEL_URLS[model],
-            delegate
-        },
-        runningMode: 'VIDEO',
-        numPoses: np,
-        minPoseDetectionConfidence: conf,
-        minPosePresenceConfidence: conf,
-        minTrackingConfidence: conf
+    const tracker = new HeadTracker({
+        PoseLandmarker,
+        vision,
+        players: playerModeCount === 1 ? 1 : 2,
+        trackerModelUrls: trackTuning.poseModels.map((m) => POSE_MODEL_URLS[m]),
+        // Разведчику хватает облегчённой модели: ищет он детектором, а тот общий.
+        scoutModelUrl: POSE_MODEL_URLS.lite,
+        delegateOrder: trackTuning.preferCpuPose ? ['CPU', 'GPU'] : ['GPU', 'CPU'],
+        confidence: trackTuning.minPoseConfidence
     });
-
-    const delegateOrder = trackTuning.preferCpuPose ? ['CPU', 'GPU'] : ['GPU', 'CPU'];
-    let lastErr;
-    for (const model of trackTuning.poseModels) {
-        for (const delegate of delegateOrder) {
-            try {
-                poseLandmarker = await PoseLandmarker.createFromOptions(vision, poseOpts(delegate, model));
-                mediapipePoseDelegate = delegate;
-                console.info(
-                    `[Hatter] pose model: ${model}, delegate: ${mediapipePoseDelegate}, numPoses=${np}, androidCpuFirst=${trackTuning.preferCpuPose}`
-                );
-                return;
-            } catch (e) {
-                lastErr = e;
-                console.warn(`PoseLandmarker ${model}/${delegate} failed:`, e);
-            }
-        }
-    }
-    throw lastErr ?? new Error('PoseLandmarker init failed');
+    await tracker.init();
+    headTracker = tracker;
+    console.info(
+        `[Hatter] head tracker: ${tracker.info.model}, delegate ${tracker.info.delegate}, players=${tracker.players}, androidCpuFirst=${trackTuning.preferCpuPose}`
+    );
 }
 
 async function recreatePoseLandmarker() {
     if (!visionTasksResolver) return;
-    if (poseLandmarker) {
-        try {
-            poseLandmarker.close();
-        } catch (_) {}
-        poseLandmarker = null;
-    }
+    const old = headTracker;
+    headTracker = null;
+    old?.close();
     resetRuntimeState();
-    // Новый экземпляр детектора ничего не помнит, поэтому счётчик меток начинаем
-    // заново. Только здесь: при обычном рестарте игры модель та же самая.
-    poseDetectTsMs = 0;
     await createPoseLandmarkerInstance();
 }
 
@@ -2796,8 +2279,6 @@ async function initializeModels() {
  * Игровой цикл
  * ------------------------------------------------------------------------- */
 
-let currentPoseResults = null;
-
 let perfFrameSumMs = 0;
 let perfFrameCount = 0;
 let perfLastLogMs = 0;
@@ -2813,31 +2294,11 @@ function gameLoop(nowTime) {
     lastFrameTime = nowTime;
 
     const startTimeMs = performance.now();
-    let gotNewVideoPoseFrame = false;
 
-    if (poseLandmarker && lastVideoTime !== video.currentTime) {
-        if (prevVideoTimeForInterval >= 0 && video.currentTime > prevVideoTimeForInterval) {
-            poseFrameIntervalMs = Math.max(
-                20,
-                Math.min(50, (video.currentTime - prevVideoTimeForInterval) * 1000)
-            );
-        }
-        prevVideoTimeForInterval = video.currentTime;
+    // Модель гоняем только на новом кадре камеры: экран обновляется чаще.
+    if (headTracker && video.videoWidth > 0 && lastVideoTime !== video.currentTime) {
         lastVideoTime = video.currentTime;
-        gotNewVideoPoseFrame = true;
-        // Метка обязана строго расти за всё время жизни экземпляра детектора:
-        // на убывающей MediaPipe уводит граф в ошибку, и трекер молча умирает
-        // до перезагрузки страницы. poseDetectTsMs живёт через рестарты игры,
-        // поэтому здесь достаточно всегда двигаться вперёд от него.
-        const videoTsMs = Number.isFinite(video.currentTime) ? video.currentTime * 1000 : startTimeMs;
-        const frameTsMs = videoTsMs > poseDetectTsMs ? videoTsMs : poseDetectTsMs + 1;
-        poseDetectTsMs = frameTsMs;
-        try {
-            const pRes = poseLandmarker.detectForVideo(video, frameTsMs);
-            if (pRes) currentPoseResults = pRes;
-        } catch (err) {
-            console.warn('PoseLandmarker detectForVideo:', err);
-        }
+        headTracker.update(video, video.videoWidth, video.videoHeight, startTimeMs);
     }
 
     canvasCtx.clearRect(0, 0, canvasElement.width, canvasElement.height);
@@ -2873,28 +2334,9 @@ function gameLoop(nowTime) {
         };
     }
 
-    const displayLmByPoseKey = poseDisplayLmByPoseKey;
-    let orderedPersons = [];
-
-    if (currentPoseResults?.landmarks) {
-        orderedPersons = bindStablePoseKeys(getOrderedPersons(currentPoseResults), getScreenPoint);
-        const nowPoseMs = performance.now();
-        const activePoseKeys = new Set(orderedPersons.map((p) => p.key));
-
-        if (gotNewVideoPoseFrame) {
-            prunePoseSmoothState(activePoseKeys, nowPoseMs);
-            prunePoseDisplayState(activePoseKeys);
-            pruneHeadOverlayState(activePoseKeys, nowPoseMs);
-            commitPoseTargetsFromFrame(orderedPersons, nowPoseMs);
-        }
-
-        updatePoseDisplayLandmarks(activePoseKeys, nowPoseMs);
-
-        for (const { key: poseKey } of orderedPersons) {
-            const landmarks = displayLmByPoseKey.get(poseKey);
-            if (landmarks) tickHeadOverlayFromLm(poseKey, landmarks, getScreenPoint, nowPoseMs);
-        }
-    }
+    // Игроки, чьей головой сейчас можно ловить. Шляпы при этом рисуются по
+    // headOverlayByPoseKey — там головы живут дольше, на прогнозе.
+    const orderedPersons = applyTrackedHeads(getScreenPoint, performance.now());
 
     const acceptingInput = isPlaying && !catchTutorialActive && !victoryTransitionActive;
 
@@ -2925,9 +2367,8 @@ function gameLoop(nowTime) {
     for (const hat of landed) hatReachedFloor(hat);
 
     // Шляпы на головах рисуем поверх летящих — надетая всегда на виду.
-    // Идём по СОХРАНЁННЫМ головам, а не только по видимым в этом кадре: модель
-    // регулярно теряет одного из двух игроков на кадр-другой, и обход по
-    // orderedPersons заставлял бы шляпу мигать на каждом таком пропуске.
+    // Идём по всем живым головам, а не только по годным для ловли: на коротких
+    // провалах слежения шляпа держится на прогнозе и не мигает.
     for (const poseKey of headOverlayByPoseKey.keys()) {
         drawCatchHint(canvasCtx, poseKey);
         drawActivePerk(canvasCtx, poseKey);
@@ -2949,7 +2390,7 @@ function gameLoop(nowTime) {
     }
 
     if (playersDisplay) {
-        const n = orderedPersons.length;
+        const n = headOverlayByPoseKey.size;
         if (playerModeCount === 1) {
             playersDisplay.textContent = n >= 1 ? t('players1ok') : t('players1wait');
         } else {
